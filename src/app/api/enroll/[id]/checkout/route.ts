@@ -21,10 +21,16 @@ import { usd } from '@/lib/plans';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   if (!stripeConfigured) {
     return NextResponse.json({ error: 'stripe_not_configured' }, { status: 503 });
   }
+
+  // Return to whatever origin the visitor is actually on (this deploy / a
+  // preview / the live domain) rather than a hard-coded site URL, so the Stripe
+  // redirect never bounces a tester onto a different deployment. Falls back to
+  // the configured canonical URL if the browser omits Origin.
+  const baseUrl = req.headers.get('origin') ?? siteUrl;
 
   const enrollment = await getEnrollmentBySecureId(params.id);
   if (!enrollment) return NextResponse.json({ error: 'not_found' }, { status: 404 });
@@ -35,7 +41,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   }
   // Already paid — hand straight to confirmation (never charge twice).
   if (enrollment.status === 'paid') {
-    return NextResponse.json({ url: `${siteUrl}/enroll/confirmation?ref=${enrollment.secureId}` });
+    return NextResponse.json({ url: `${baseUrl}/enroll/confirmation?ref=${enrollment.secureId}` });
   }
 
   // Best-effort: ensure the GHL contact exists before payment. Never blocks
@@ -83,8 +89,8 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       },
     },
     custom_text: { submit: { message: commitmentLine } },
-    success_url: `${siteUrl}/enroll/confirmation?ref=${enrollment.secureId}`,
-    cancel_url: `${siteUrl}/enroll/${enrollment.secureId}/review`,
+    success_url: `${baseUrl}/enroll/confirmation?ref=${enrollment.secureId}`,
+    cancel_url: `${baseUrl}/enroll/${enrollment.secureId}/review`,
   });
 
   if (!session.url) {
