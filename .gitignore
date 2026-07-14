@@ -1,0 +1,16 @@
+/node_modules
+/.next
+/out
+/build
+.env
+.env.local
+.env*.local
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+
+.vercel
+
+# Stale Chat-1 build copy - never committed
+/_old-chat1-build
