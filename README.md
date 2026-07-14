@@ -76,3 +76,5 @@ compare-and-set (reads the GHL contact first, writes only diffs), gated on
 
 ## Chat 3 attach points (marked <Placeholder chat={3}>)
 Secure checkout (on the accepted review page) · strategy-call calendar hand-off.
+
+<!-- deploy-trigger-check: 2026-07-14 -->
