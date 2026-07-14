@@ -2,17 +2,17 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
+import { ConfirmationPending } from '@/components/enroll/ConfirmationPending';
 import { getEnrollmentBySecureId, getLatestAcceptance } from '@/lib/repo';
 import { usd } from '@/lib/plans';
 import { siteConfig } from '@/config/site';
 
 /**
- * CONFIRMATION (/enroll/confirmation?ref=<secure-id>) — Decision #3.
- * Renders from the persisted enrollment: plan, term, minimum obligation, next
- * steps, onboarding access, fit-review timing, support channel, and a reference.
- * This is the post-payment landing; PAYMENT VERIFICATION gating and the real
- * onboarding hand-off are wired in Chat 3. In Chat 2 it renders the saved
- * enrollment so the page is reviewable end-to-end.
+ * CONFIRMATION (/enroll/confirmation?ref=<secure-id>) — Decision #3 + #4 rev.
+ * Renders from the persisted enrollment. Payment is confirmed by the Stripe
+ * WEBHOOK, never by this redirect: until the enrollment is `paid`, this shows a
+ * self-polling "confirming…" state (ConfirmationPending) and only reveals the
+ * confirmed details once the webhook has activated the enrollment.
  *
  * As a static segment, /enroll/confirmation takes priority over the sibling
  * dynamic /enroll/[token] route.
@@ -27,7 +27,8 @@ export const metadata: Metadata = {
 export default async function ConfirmationPage({ searchParams }: { searchParams: { ref?: string } }) {
   const ref = searchParams.ref;
   const enrollment = ref ? await getEnrollmentBySecureId(ref) : null;
-  const acceptance = enrollment ? ((await getLatestAcceptance(enrollment.id)) as any) : null;
+  const isPaid = enrollment?.status === 'paid';
+  const acceptance = isPaid && enrollment ? ((await getLatestAcceptance(enrollment.id)) as any) : null;
   const snap = acceptance?.price_snapshot as any | undefined;
 
   return (
@@ -55,6 +56,8 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
               </Link>
             </div>
           </>
+        ) : !isPaid ? (
+          <ConfirmationPending secureId={enrollment.secureId} />
         ) : (
           <>
             <div className="confirm-check" aria-hidden="true">
@@ -124,8 +127,8 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
             </ul>
 
             <p className="q-fine" style={{ marginTop: 22 }}>
-              Secure payment and the onboarding hand-off are finalized in the full flow. Keep your reference for any
-              questions.
+              Your payment is confirmed and your enrollment is active. Billing is handled securely by Stripe. Keep
+              your reference for any questions.
             </p>
           </>
         )}

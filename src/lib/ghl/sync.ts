@@ -54,6 +54,11 @@ function tagsForStage(stage: string, enr: any): string[] {
   if (stage === 'disclosure_accepted') {
     return ['enrollment-disclosure-accepted', `plan-${enr.plan_key}`];
   }
+  if (stage === 'paid') {
+    // `client-paid` is the durable segmentation label that FIRES the GHL
+    // onboarding workflow (Contact Tag trigger). Additive; never removed.
+    return ['client-paid', `plan-${enr.plan_key}`];
+  }
   return [];
 }
 
@@ -121,6 +126,22 @@ function disclosureNote(enr: any, ev: any): string {
     .join('\n');
 }
 
+function paidNote(enr: any, ev: any): string {
+  const planName = PLANS.find((p) => p.key === enr.plan_key)?.name ?? enr.plan_key;
+  const billingLabel = BILLING[enr.billing_key as keyof typeof BILLING]?.label ?? enr.billing_key;
+  const p = ev.payload ?? {};
+  return [
+    `Payment CONFIRMED via Stripe — enrollment active.`,
+    `Plan: ${planName} · Billing: ${billingLabel}`,
+    p.subscription ? `Stripe subscription: ${p.subscription}` : ``,
+    p.customer ? `Stripe customer: ${p.customer}` : ``,
+    `Billing is authoritative in Stripe. Contact is now client-paid; onboarding begins.`,
+    `Payment evidence + term dates stored in Postgres.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 /** Apply a single stage event to GHL, compare-and-set. Returns the contact id. */
 async function applyStage(enr: any, ev: any, contactId: string | null, port: GhlPort): Promise<string> {
   const desiredTags = tagsForStage(ev.stage, enr);
@@ -137,6 +158,7 @@ async function applyStage(enr: any, ev: any, contactId: string | null, port: Ghl
     });
     if (ev.stage === 'qualifier_submitted') await port.addNote(res.id, qualifierNote(enr));
     if (ev.stage === 'disclosure_accepted') await port.addNote(res.id, disclosureNote(enr, ev));
+    if (ev.stage === 'paid') await port.addNote(res.id, paidNote(enr, ev));
     return res.id;
   }
 
@@ -156,6 +178,7 @@ async function applyStage(enr: any, ev: any, contactId: string | null, port: Ghl
   }
 
   if (ev.stage === 'disclosure_accepted') await port.addNote(contactId, disclosureNote(enr, ev));
+  if (ev.stage === 'paid') await port.addNote(contactId, paidNote(enr, ev));
   return contactId;
 }
 

@@ -70,7 +70,24 @@ export const ghl = {
   },
 };
 
-/** Shared secret guarding the /api/sync worker endpoint (cron bearer token). */
+/** Stripe — the AUTHORITATIVE billing system (Decision #4 revision 2026-07-14).
+ *  Checkout, subscriptions, prepaid terms, receipts, refunds, and the payment
+ *  webhook source-of-truth all live here. GHL is downstream CRM only. */
+export const stripe = {
+  secretKey: opt('STRIPE_SECRET_KEY'),
+  /** Signing secret for the /api/stripe/webhook endpoint (whsec_…). Set after
+   *  the webhook endpoint is created in the Stripe dashboard. */
+  webhookSecret: opt('STRIPE_WEBHOOK_SECRET'),
+  /** Version stamp stored on every enrollment's payment record so a price/plan
+   *  change is auditable against what the customer actually bought. */
+  priceVersion: opt('STRIPE_PRICE_VERSION') ?? 'v4-2026-07',
+  get isConfigured() {
+    return !!this.secretKey;
+  },
+};
+
+/** Shared secret guarding the /api/sync worker endpoint (cron bearer token).
+ *  Also gates one-off admin routes (e.g. the Stripe price seed). */
 export const sync = {
   secret: opt('SYNC_SECRET'),
 };

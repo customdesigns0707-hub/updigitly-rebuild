@@ -33,6 +33,14 @@ export interface Enrollment {
   anythingElse: string | null;
   complexityFlags: string[];
   ghlContactId: string | null;
+  // Billing mirror of Stripe's authoritative record (Decision #4 rev).
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  stripeCheckoutSessionId: string | null;
+  paidAt: string | null;
+  contractStartDate: string | null;
+  initialTermEndDate: string | null;
+  priceVersion: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -52,6 +60,13 @@ function mapEnrollment(r: any): Enrollment {
     anythingElse: r.anything_else,
     complexityFlags: r.complexity_flags ?? [],
     ghlContactId: r.ghl_contact_id,
+    stripeCustomerId: r.stripe_customer_id ?? null,
+    stripeSubscriptionId: r.stripe_subscription_id ?? null,
+    stripeCheckoutSessionId: r.stripe_checkout_session_id ?? null,
+    paidAt: r.paid_at ?? null,
+    contractStartDate: r.contract_start_date ?? null,
+    initialTermEndDate: r.initial_term_end_date ?? null,
+    priceVersion: r.price_version ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -60,6 +75,11 @@ function mapEnrollment(r: any): Enrollment {
 /** Unguessable, URL-safe token for the enrollment's private review URL. */
 export function newSecureId(): string {
   return randomBytes(18).toString('base64url'); // 24 chars, ~144 bits
+}
+
+/** Unguessable token for the private /onboarding/[token] URL. */
+export function newOnboardingToken(): string {
+  return randomBytes(24).toString('base64url'); // 32 chars, ~192 bits
 }
 
 export interface CreateEnrollmentInput {
@@ -201,6 +221,186 @@ export async function getLatestAcceptance(enrollmentId: string) {
      where enrollment_id = ${enrollmentId}
      order by accepted_at desc limit 1`;
   return row ?? null;
+}
+
+export async function getEnrollmentById(id: string): Promise<Enrollment | null> {
+  const sql = getSql();
+  const [row] = await sql`select * from enrollments where id = ${id} limit 1`;
+  return row ? mapEnrollment(row) : null;
+}
+
+/**
+ * Mark that a Stripe Checkout Session was created for this enrollment. Advances
+ * `disclosure_accepted` → `awaiting_payment` (compare-and-set; a re-click while
+ * already awaiting just refreshes the stored session id; never touches `paid`).
+ */
+export async function markAwaitingPayment(
+  secureId: string,
+  sessionId: string,
+): Promise<Enrollment | null> {
+  const sql = getSql();
+  const [row] = await sql`
+    update enrollments
+       set status = case when status = 'disclosure_accepted' then 'awaiting_payment' else status end,
+           stripe_checkout_session_id = ${sessionId},
+           updated_at = now()
+     where secure_id = ${secureId} and status in ('disclosure_accepted','awaiting_payment')
+     returning *`;
+  return row ? mapEnrollment(row) : null;
+}
+
+export interface StripePaymentInput {
+  /** Stripe event id (evt_…) — the idempotency key. */
+  eventId: string;
+  eventType: string;
+  /** Enrollment secure id, carried on the session as client_reference_id. */
+  secureId: string;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  stripeCheckoutSessionId: string | null;
+  priceVersion: string | null;
+  payload?: unknown;
+}
+
+export type StripePaymentResult =
+  | {
+      ok: true;
+      outcome: 'applied' | 'duplicate_event' | 'already_paid';
+      enrollment: Enrollment;
+      onboardingToken: string | null;
+    }
+  | { ok: false; reason: 'enrollment_not_found' };
+
+/**
+ * Reconcile a verified Stripe payment against exactly one enrollment — the core
+ * of the webhook. All in ONE transaction so it is atomic and idempotent:
+ *  • Claims the Stripe event id (unique PK). A duplicate delivery finds the id
+ *    already present and returns `duplicate_event` with NO side effects.
+ *  • A mid-way failure rolls the whole tx back (including the event claim), so
+ *    Stripe's retry safely reprocesses — no partial state.
+ *  • Compare-and-set on status: a second, distinct event for an already-paid
+ *    enrollment returns `already_paid` without re-creating onboarding.
+ *  • Onboarding row is unique per enrollment (`on conflict do nothing`), so it
+ *    can never be created twice.
+ */
+export async function recordStripePayment(input: StripePaymentInput): Promise<StripePaymentResult> {
+  const sql = getSql();
+  return sql.begin(async (tx) => {
+    const json = (v: unknown) => v as Parameters<typeof tx.json>[0];
+    // 1. Claim the event id. Empty result ⇒ this exact event was already processed.
+    const claimed = await tx`
+      insert into stripe_events (id, type, payload)
+      values (${input.eventId}, ${input.eventType}, ${tx.json(json(input.payload ?? {}))})
+      on conflict (id) do nothing
+      returning id`;
+    const duplicateEvent = claimed.length === 0;
+
+    // 2. Match to exactly one enrollment and lock it.
+    const [enr] = await tx`select * from enrollments where secure_id = ${input.secureId} for update`;
+    if (!enr) return { ok: false, reason: 'enrollment_not_found' } as const;
+
+    const currentToken = async () =>
+      (await tx`select secure_token from onboarding where enrollment_id = ${enr.id} limit 1`)[0]
+        ?.secure_token ?? null;
+
+    if (duplicateEvent) {
+      return {
+        ok: true,
+        outcome: 'duplicate_event',
+        enrollment: mapEnrollment(enr),
+        onboardingToken: await currentToken(),
+      } as const;
+    }
+
+    await tx`update stripe_events set enrollment_id = ${enr.id} where id = ${input.eventId}`;
+
+    if (enr.status === 'paid') {
+      return {
+        ok: true,
+        outcome: 'already_paid',
+        enrollment: mapEnrollment(enr),
+        onboardingToken: await currentToken(),
+      } as const;
+    }
+
+    // 3. Advance to paid + record the billing mirror and the 6-month term window.
+    const [updated] = await tx`
+      update enrollments set
+        status = 'paid',
+        paid_at = now(),
+        stripe_customer_id = ${input.stripeCustomerId},
+        stripe_subscription_id = ${input.stripeSubscriptionId},
+        stripe_checkout_session_id = ${input.stripeCheckoutSessionId},
+        price_version = ${input.priceVersion},
+        contract_start_date = current_date,
+        initial_term_end_date = (current_date + interval '6 months')::date,
+        updated_at = now()
+      where id = ${enr.id}
+      returning *`;
+
+    // 4. Immutable 'paid' stage event → the idempotent GHL sync tags client-paid
+    //    (which triggers the onboarding workflow). Compare-and-set guarded.
+    await tx`
+      insert into stage_events (enrollment_id, stage, payload)
+      values (${enr.id}, 'paid',
+              ${tx.json(json({ subscription: input.stripeSubscriptionId, customer: input.stripeCustomerId }))})
+      on conflict (enrollment_id, stage) do nothing`;
+
+    // 5. Create onboarding (one per enrollment). Prefill happens at read time.
+    const token = newOnboardingToken();
+    await tx`
+      insert into onboarding (enrollment_id, secure_token)
+      values (${enr.id}, ${token})
+      on conflict (enrollment_id) do nothing`;
+
+    return {
+      ok: true,
+      outcome: 'applied',
+      enrollment: mapEnrollment(updated),
+      onboardingToken: await currentToken(),
+    } as const;
+  });
+}
+
+/* ─── Onboarding ───────────────────────────────────────────────────────────*/
+export interface OnboardingRow {
+  id: string;
+  enrollmentId: string;
+  secureToken: string;
+  status: 'not_started' | 'in_progress' | 'submitted';
+  answers: Record<string, unknown>;
+  substantialInfoAt: string | null;
+  fitReviewStatus: 'pending' | 'cleared' | 'flagged' | 'resolved';
+  fitReviewDueAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapOnboarding(r: any): OnboardingRow {
+  return {
+    id: r.id,
+    enrollmentId: r.enrollment_id,
+    secureToken: r.secure_token,
+    status: r.status,
+    answers: r.answers ?? {},
+    substantialInfoAt: r.substantial_info_at ?? null,
+    fitReviewStatus: r.fit_review_status,
+    fitReviewDueAt: r.fit_review_due_at ?? null,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function getOnboardingByToken(token: string): Promise<OnboardingRow | null> {
+  const sql = getSql();
+  const [row] = await sql`select * from onboarding where secure_token = ${token} limit 1`;
+  return row ? mapOnboarding(row) : null;
+}
+
+export async function getOnboardingByEnrollmentId(enrollmentId: string): Promise<OnboardingRow | null> {
+  const sql = getSql();
+  const [row] = await sql`select * from onboarding where enrollment_id = ${enrollmentId} limit 1`;
+  return row ? mapOnboarding(row) : null;
 }
 
 /* ─── Contact messages ─────────────────────────────────────────────────────*/

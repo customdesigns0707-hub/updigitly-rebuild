@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
-import { Placeholder } from '@/components/Placeholder';
+import { CheckoutButton } from '@/components/enroll/CheckoutButton';
 import { BillingSwitch } from '@/components/enroll/BillingSwitch';
 import { AcceptPanel } from '@/components/enroll/AcceptPanel';
 import { getEnrollmentBySecureId } from '@/lib/repo';
@@ -156,10 +156,17 @@ export default async function ReviewPage({ params }: { params: { token: string }
               Disclosure accepted — recorded
             </span>
             <div style={{ marginTop: 22 }}>
-              <Placeholder badge="SECURE CHECKOUT" title="Secure payment mounts here" chat={3}>
-                Your acceptance is recorded. The hard-gated secure checkout — personalized to this plan and
-                billing option — is wired in Chat 3. No card details are handled on Updigitly&rsquo;s own stack.
-              </Placeholder>
+              {enrollment.status === 'paid' ? (
+                <Link
+                  className="btn-primary"
+                  href={`/enroll/confirmation?ref=${enrollment.secureId}`}
+                  data-hover
+                >
+                  You&rsquo;re enrolled — view your confirmation →
+                </Link>
+              ) : (
+                <CheckoutButton secureId={enrollment.secureId} />
+              )}
             </div>
           </div>
         ) : (
