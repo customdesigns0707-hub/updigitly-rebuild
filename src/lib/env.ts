@@ -50,7 +50,9 @@ export const ghl = {
    * only writes the fields whose IDs are supplied; unmapped answers still reach
    * GHL inside the qualifier Note, so nothing is lost when a mapping is absent.
    * Env keys: GHL_FIELD_PLAN, GHL_FIELD_BILLING, GHL_FIELD_LOCATIONS,
-   * GHL_FIELD_WEBSITE, GHL_FIELD_CRM, GHL_FIELD_NEEDS, GHL_FIELD_COMPLEXITY.
+   * GHL_FIELD_WEBSITE, GHL_FIELD_CRM, GHL_FIELD_NEEDS, GHL_FIELD_COMPLEXITY,
+   * GHL_FIELD_ONBOARDING_URL (Chat 4 — the per-client onboarding link, so the
+   * GHL "client-paid → onboarding" workflow email can template it in).
    */
   fields: {
     plan: opt('GHL_FIELD_PLAN'),
@@ -60,6 +62,7 @@ export const ghl = {
     crm: opt('GHL_FIELD_CRM'),
     needs: opt('GHL_FIELD_NEEDS'),
     complexity: opt('GHL_FIELD_COMPLEXITY'),
+    onboardingUrl: opt('GHL_FIELD_ONBOARDING_URL'),
   },
   /** Optional pipeline/stage IDs — reserved for Chat 3 (opportunity creation).
    *  Read here so the env contract is documented in one place. */

@@ -18,11 +18,12 @@
  */
 import 'server-only';
 import { getSql } from '../db';
-import { ghl } from '../env';
+import { ghl, siteUrl } from '../env';
 import * as realClient from './client';
 import type { GhlContact, GhlCustomField } from './client';
 import { PLANS, BILLING } from '../plans';
 import { answerLabel } from '../enrollment';
+import { onboardingAnswerLabel } from '../onboarding';
 
 export interface GhlPort {
   upsertContact(i: {
@@ -59,12 +60,19 @@ function tagsForStage(stage: string, enr: any): string[] {
     // onboarding workflow (Contact Tag trigger). Additive; never removed.
     return ['client-paid', `plan-${enr.plan_key}`];
   }
+  if (stage === 'onboarding_submitted') {
+    // Fires once the visitor completes /onboarding/[token] — this is also the
+    // moment the 7-day fit-review clock starts (Decision #2).
+    return ['onboarding-info-submitted'];
+  }
   return [];
 }
 
 /** Desired custom-field values — only the fields whose IDs are mapped in env.
- *  Unmapped answers still reach GHL via the notes below, so nothing is lost. */
-function fieldsForEnrollment(enr: any): GhlCustomField[] {
+ *  Unmapped answers still reach GHL via the notes below, so nothing is lost.
+ *  `onboardingUrl` is only ever supplied on the 'paid' stage (its token rides
+ *  in that stage_event's payload — see repo.ts `recordStripePayment`). */
+function fieldsForEnrollment(enr: any, onboardingUrl?: string): GhlCustomField[] {
   const f = ghl.fields;
   const planName = PLANS.find((p) => p.key === enr.plan_key)?.name ?? enr.plan_key;
   const billingLabel = BILLING[enr.billing_key as keyof typeof BILLING]?.label ?? enr.billing_key;
@@ -79,6 +87,7 @@ function fieldsForEnrollment(enr: any): GhlCustomField[] {
     [f.needs, needs.map((n) => answerLabel('needs', n)).join(', ') || 'None'],
     [f.complexity, (enr.complexity_flags ?? []).join('; ') || 'None flagged'],
   ];
+  if (onboardingUrl) pairs.push([f.onboardingUrl, onboardingUrl]);
   return pairs.filter(([id]) => !!id).map(([id, value]) => ({ id: id as string, value }));
 }
 
@@ -130,13 +139,29 @@ function paidNote(enr: any, ev: any): string {
   const planName = PLANS.find((p) => p.key === enr.plan_key)?.name ?? enr.plan_key;
   const billingLabel = BILLING[enr.billing_key as keyof typeof BILLING]?.label ?? enr.billing_key;
   const p = ev.payload ?? {};
+  const onboardingUrl = p.onboardingToken ? `${siteUrl}/onboarding/${p.onboardingToken}` : null;
   return [
     `Payment CONFIRMED via Stripe — enrollment active.`,
     `Plan: ${planName} · Billing: ${billingLabel}`,
     p.subscription ? `Stripe subscription: ${p.subscription}` : ``,
     p.customer ? `Stripe customer: ${p.customer}` : ``,
     `Billing is authoritative in Stripe. Contact is now client-paid; onboarding begins.`,
+    onboardingUrl ? `Onboarding link: ${onboardingUrl}` : ``,
     `Payment evidence + term dates stored in Postgres.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function onboardingSubmittedNote(enr: any, ev: any): string {
+  const p = ev.payload ?? {};
+  return [
+    `Onboarding info submitted — fit-review clock started (7 days).`,
+    `Business: ${enr.business_name}`,
+    p.primaryGoal ? `Primary goal: ${onboardingAnswerLabel('primaryGoal', p.primaryGoal)}` : ``,
+    p.timeline ? `Timeline: ${onboardingAnswerLabel('timeline', p.timeline)}` : ``,
+    p.targetCustomer ? `Target customer: ${p.targetCustomer}` : ``,
+    `Full answers stored in Postgres. Fit review must clear before heavy build begins.`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -145,7 +170,11 @@ function paidNote(enr: any, ev: any): string {
 /** Apply a single stage event to GHL, compare-and-set. Returns the contact id. */
 async function applyStage(enr: any, ev: any, contactId: string | null, port: GhlPort): Promise<string> {
   const desiredTags = tagsForStage(ev.stage, enr);
-  const desiredFields = fieldsForEnrollment(enr);
+  const onboardingUrl =
+    ev.stage === 'paid' && ev.payload?.onboardingToken
+      ? `${siteUrl}/onboarding/${ev.payload.onboardingToken}`
+      : undefined;
+  const desiredFields = fieldsForEnrollment(enr, onboardingUrl);
 
   if (!contactId) {
     // First sync: create/match the contact (idempotent by email/phone on GHL).
@@ -159,6 +188,7 @@ async function applyStage(enr: any, ev: any, contactId: string | null, port: Ghl
     if (ev.stage === 'qualifier_submitted') await port.addNote(res.id, qualifierNote(enr));
     if (ev.stage === 'disclosure_accepted') await port.addNote(res.id, disclosureNote(enr, ev));
     if (ev.stage === 'paid') await port.addNote(res.id, paidNote(enr, ev));
+    if (ev.stage === 'onboarding_submitted') await port.addNote(res.id, onboardingSubmittedNote(enr, ev));
     return res.id;
   }
 
@@ -179,6 +209,7 @@ async function applyStage(enr: any, ev: any, contactId: string | null, port: Ghl
 
   if (ev.stage === 'disclosure_accepted') await port.addNote(contactId, disclosureNote(enr, ev));
   if (ev.stage === 'paid') await port.addNote(contactId, paidNote(enr, ev));
+  if (ev.stage === 'onboarding_submitted') await port.addNote(contactId, onboardingSubmittedNote(enr, ev));
   return contactId;
 }
 

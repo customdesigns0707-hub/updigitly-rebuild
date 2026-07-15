@@ -338,20 +338,24 @@ export async function recordStripePayment(input: StripePaymentInput): Promise<St
       where id = ${enr.id}
       returning *`;
 
-    // 4. Immutable 'paid' stage event → the idempotent GHL sync tags client-paid
-    //    (which triggers the onboarding workflow). Compare-and-set guarded.
-    await tx`
-      insert into stage_events (enrollment_id, stage, payload)
-      values (${enr.id}, 'paid',
-              ${tx.json(json({ subscription: input.stripeSubscriptionId, customer: input.stripeCustomerId }))})
-      on conflict (enrollment_id, stage) do nothing`;
-
-    // 5. Create onboarding (one per enrollment). Prefill happens at read time.
+    // 4. Create onboarding (one per enrollment) FIRST so its token can ride on
+    //    the 'paid' stage event payload below — that lets the GHL sync worker
+    //    surface the onboarding link in the paid note (and the optional
+    //    GHL_FIELD_ONBOARDING_URL custom field) without a second query.
+    //    Prefill of the form itself happens at read time.
     const token = newOnboardingToken();
     await tx`
       insert into onboarding (enrollment_id, secure_token)
       values (${enr.id}, ${token})
       on conflict (enrollment_id) do nothing`;
+
+    // 5. Immutable 'paid' stage event → the idempotent GHL sync tags client-paid
+    //    (which triggers the onboarding workflow). Compare-and-set guarded.
+    await tx`
+      insert into stage_events (enrollment_id, stage, payload)
+      values (${enr.id}, 'paid',
+              ${tx.json(json({ subscription: input.stripeSubscriptionId, customer: input.stripeCustomerId, onboardingToken: token }))})
+      on conflict (enrollment_id, stage) do nothing`;
 
     return {
       ok: true,
@@ -400,6 +404,116 @@ export async function getOnboardingByToken(token: string): Promise<OnboardingRow
 export async function getOnboardingByEnrollmentId(enrollmentId: string): Promise<OnboardingRow | null> {
   const sql = getSql();
   const [row] = await sql`select * from onboarding where enrollment_id = ${enrollmentId} limit 1`;
+  return row ? mapOnboarding(row) : null;
+}
+
+export type SaveOnboardingResult =
+  | { ok: true; onboarding: OnboardingRow }
+  | { ok: false; reason: 'not_found' | 'already_submitted' };
+
+/**
+ * Save-in-progress. A shallow jsonb merge (`answers || patch`) so each save only
+ * has to send the fields it knows about — earlier answers are never clobbered.
+ * First save flips `not_started` → `in_progress`; a submitted row is immutable
+ * here (compare-and-set — `status != 'submitted'` in the WHERE clause).
+ */
+export async function saveOnboardingAnswers(
+  token: string,
+  patch: Record<string, unknown>,
+): Promise<SaveOnboardingResult> {
+  const sql = getSql();
+  const [row] = await sql`
+    update onboarding
+       set answers = answers || ${sql.json(patch as Parameters<typeof sql.json>[0])},
+           status = case when status = 'not_started' then 'in_progress' else status end,
+           updated_at = now()
+     where secure_token = ${token} and status != 'submitted'
+     returning *`;
+  if (row) return { ok: true, onboarding: mapOnboarding(row) };
+
+  const [existing] = await sql`select * from onboarding where secure_token = ${token} limit 1`;
+  if (!existing) return { ok: false, reason: 'not_found' };
+  return { ok: false, reason: 'already_submitted' };
+}
+
+export type SubmitOnboardingResult =
+  | { ok: true; alreadySubmitted: boolean; onboarding: OnboardingRow }
+  | { ok: false; reason: 'not_found' };
+
+/**
+ * Submit the completed onboarding form. This is the event that starts the
+ * 7-day fit-review clock (Decision #2): `substantial_info_at` is the moment the
+ * client hands over the info needed to begin, and `fit_review_due_at` is set
+ * from it. Both use `coalesce` so a resubmission can never push the clock —
+ * compare-and-set at the row level (locked with `for update`), matching the
+ * idempotency style used across this file.
+ */
+export async function submitOnboarding(
+  token: string,
+  answers: Record<string, unknown>,
+): Promise<SubmitOnboardingResult> {
+  const sql = getSql();
+  return sql.begin(async (tx) => {
+    const [ob] = await tx`select * from onboarding where secure_token = ${token} for update`;
+    if (!ob) return { ok: false, reason: 'not_found' } as const;
+
+    if (ob.status === 'submitted') {
+      return { ok: true, alreadySubmitted: true, onboarding: mapOnboarding(ob) } as const;
+    }
+
+    const [updated] = await tx`
+      update onboarding set
+        answers = answers || ${tx.json(answers as Parameters<typeof tx.json>[0])},
+        status = 'submitted',
+        substantial_info_at = coalesce(substantial_info_at, now()),
+        fit_review_due_at = coalesce(fit_review_due_at, now() + interval '7 days'),
+        updated_at = now()
+      where id = ${ob.id}
+      returning *`;
+
+    // Immutable 'onboarding_submitted' stage event on the ENROLLMENT (not the
+    // onboarding row) — same compare-and-set pattern the GHL sync worker relies
+    // on elsewhere. A compact summary rides in the payload so the sync worker's
+    // note-building never needs a second join.
+    await tx`
+      insert into stage_events (enrollment_id, stage, payload)
+      values (${ob.enrollment_id}, 'onboarding_submitted',
+              ${tx.json({
+                primaryGoal: (answers as Record<string, unknown>).primaryGoal ?? null,
+                timeline: (answers as Record<string, unknown>).timeline ?? null,
+                targetCustomer: String((answers as Record<string, unknown>).targetCustomer ?? '').slice(0, 300),
+              } as Parameters<typeof tx.json>[0])})
+      on conflict (enrollment_id, stage) do nothing`;
+
+    return { ok: true, alreadySubmitted: false, onboarding: mapOnboarding(updated) } as const;
+  });
+}
+
+export type FitReviewStatus = 'pending' | 'cleared' | 'flagged' | 'resolved';
+
+/**
+ * Flip the human fit-review decision (Decision #2: internal, qualitative — not
+ * automated). Accepts either identifier so the admin call can use whichever the
+ * operator has on hand (the enrollment's secure id, or the onboarding token).
+ */
+export async function setFitReviewStatus(
+  identifier: { enrollmentSecureId?: string; onboardingToken?: string },
+  status: FitReviewStatus,
+): Promise<OnboardingRow | null> {
+  const sql = getSql();
+  let row: any;
+  if (identifier.onboardingToken) {
+    [row] = await sql`
+      update onboarding set fit_review_status = ${status}, updated_at = now()
+       where secure_token = ${identifier.onboardingToken}
+       returning *`;
+  } else if (identifier.enrollmentSecureId) {
+    [row] = await sql`
+      update onboarding o set fit_review_status = ${status}, updated_at = now()
+       from enrollments e
+       where o.enrollment_id = e.id and e.secure_id = ${identifier.enrollmentSecureId}
+       returning o.*`;
+  }
   return row ? mapOnboarding(row) : null;
 }
 

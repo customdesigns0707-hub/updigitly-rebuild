@@ -3,6 +3,7 @@ import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
 import { Reveal } from '@/components/Reveal';
 import { Placeholder } from '@/components/Placeholder';
+import { CalendarHandoff } from '@/components/CalendarHandoff';
 import { siteConfig } from '@/config/site';
 
 export const metadata: Metadata = {
@@ -13,10 +14,12 @@ export const metadata: Metadata = {
 
 /**
  * STRATEGY CALL (/strategy-call) — Scale's ONLY enrollment path + the escape
- * hatch for unclear situations (Sitemap v2, Decision #3). SHELL ONLY in Chat 1:
- * agenda + expectation-setting are real; the pre-booking qualifier and the
- * calendar hand-off are marked placeholders wired in Chat 2. No free-consulting
- * implication and no acceptance guarantee in the copy.
+ * hatch for unclear situations (Sitemap v2, Decision #3). Agenda +
+ * expectation-setting are real. Calendar hand-off wired live in Chat 4
+ * (CalendarHandoff, Decision #4: branded link/card). The pre-booking
+ * qualifier stays a placeholder — out of Chat 4's named scope, picked up in a
+ * later chat. No free-consulting implication and no acceptance guarantee in
+ * the copy.
  */
 
 const AGENDA = [
@@ -59,12 +62,9 @@ export default function StrategyCallPage() {
             </Reveal>
           </div>
 
-          {/* Calendar hand-off — GHL booking retained V1, wired in Chat 2 */}
+          {/* Calendar hand-off — GHL booking retained V1, wired live in Chat 4 */}
           <div>
-            <Placeholder badge="CALENDAR HAND-OFF" title="Booking calendar mounts here" chat={2}>
-              A branded hand-off to the scheduling experience mounts in this container. V1 uses the retained booking
-              flow (embed if mobile/blocker testing passes, otherwise a top-level link).
-            </Placeholder>
+            <CalendarHandoff />
           </div>
         </div>
 

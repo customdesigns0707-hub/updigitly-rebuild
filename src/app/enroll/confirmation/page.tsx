@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
 import { ConfirmationPending } from '@/components/enroll/ConfirmationPending';
-import { getEnrollmentBySecureId, getLatestAcceptance } from '@/lib/repo';
+import { getEnrollmentBySecureId, getLatestAcceptance, getOnboardingByEnrollmentId } from '@/lib/repo';
 import { usd } from '@/lib/plans';
 import { siteConfig } from '@/config/site';
 
@@ -30,6 +30,7 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
   const isPaid = enrollment?.status === 'paid';
   const acceptance = isPaid && enrollment ? ((await getLatestAcceptance(enrollment.id)) as any) : null;
   const snap = acceptance?.price_snapshot as any | undefined;
+  const onboarding = isPaid && enrollment ? await getOnboardingByEnrollmentId(enrollment.id) : null;
 
   return (
     <>
@@ -93,8 +94,9 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
               <li>
                 <span className="ci-lbl">Onboarding</span>
                 <span className="ci-val">
-                  We&rsquo;ll send your onboarding link so we can gather the last details — we reuse everything you
-                  already told us, so nothing is asked twice.
+                  {onboarding?.status === 'submitted'
+                    ? 'Your onboarding info is in — we’ll be in touch as fit review completes.'
+                    : 'We reuse everything you already told us, so nothing is asked twice — start whenever you’re ready.'}
                 </span>
               </li>
               <li>
@@ -130,6 +132,14 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
               Your payment is confirmed and your enrollment is active. Billing is handled securely by Stripe. Keep
               your reference for any questions.
             </p>
+
+            {onboarding && onboarding.status !== 'submitted' && (
+              <div className="hero-ctas" style={{ marginTop: 28 }}>
+                <Link className="btn-primary" href={`/onboarding/${onboarding.secureToken}`} data-hover>
+                  Start onboarding →
+                </Link>
+              </div>
+            )}
           </>
         )}
       </div>

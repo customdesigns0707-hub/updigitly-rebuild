@@ -27,6 +27,14 @@ export const siteConfig = {
     href: 'mailto:hello@updigitly.com',
   },
 
+  // Strategy Call booking hand-off (Chat 4, Decision #4: branded link/card —
+  // GHL calendar retained V1). Opens top-level (new tab), never embedded, per
+  // the mobile/ad-blocker reliability call. Falls back to the phone CTA when
+  // unset. Set NEXT_PUBLIC_GHL_CALENDAR_URL in .env.local / Vercel.
+  calendar: {
+    url: process.env.NEXT_PUBLIC_GHL_CALENDAR_URL || null,
+  },
+
   // Primary desktop nav (logo is the Home link, rendered separately).
   nav: [
     { label: 'The System', href: '/system' },
