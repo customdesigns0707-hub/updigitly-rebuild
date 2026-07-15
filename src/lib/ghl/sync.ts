@@ -24,6 +24,7 @@ import type { GhlContact, GhlCustomField } from './client';
 import { PLANS, BILLING } from '../plans';
 import { answerLabel } from '../enrollment';
 import { onboardingAnswerLabel } from '../onboarding';
+import { strategyAnswerLabel } from '../strategyCall';
 
 export interface GhlPort {
   upsertContact(i: {
@@ -359,5 +360,68 @@ export async function drainContactMessages(limit = 50, port: GhlPort = defaultPo
   const rows = await sql`
     select id from contact_messages where synced_at is null order by created_at asc limit ${limit}`;
   for (const r of rows) await syncContactMessage(r.id, port);
+  return { configured: true, processed: rows.length };
+}
+
+/* ─── Strategy Call pre-booking qualifier ──────────────────────────────────
+   Same standalone-per-submission pattern as contact messages (no state
+   machine, no gating — Decision #3's escape hatch never blocks on this). Tag
+   is durable segmentation only; the note carries the full prep context. */
+function strategyCallNote(m: any): string {
+  const a = m.answers ?? {};
+  return [
+    `Strategy Call pre-booking inquiry — updigitly.com`,
+    `Business: ${m.business_name}`,
+    `Contact: ${m.contact_name} · ${m.email} · ${m.phone}`,
+    ``,
+    `Locations/brands: ${strategyAnswerLabel('locations', a.locations)}`,
+    `Current online presence: ${strategyAnswerLabel('presence', a.presence)}`,
+    `Team size: ${strategyAnswerLabel('teamSize', a.teamSize)}`,
+    ``,
+    `Goal for the call: ${m.goal}`,
+    m.anything_else ? `\nAnything else: ${m.anything_else}` : ``,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+export async function syncStrategyCallInquiry(
+  inquiryId: string,
+  port: GhlPort = defaultPort,
+): Promise<{ status: 'ok' | 'error' | 'skipped'; reason?: string }> {
+  if (!ghl.isConfigured) return { status: 'skipped', reason: 'ghl-not-configured' };
+  const sql = getSql();
+  const [m] = await sql`select * from strategy_call_inquiries where id = ${inquiryId}`;
+  if (!m) return { status: 'error', reason: 'inquiry-missing' };
+  if (m.synced_at) return { status: 'ok', reason: 'already-synced' }; // per-row idempotency
+
+  try {
+    const contact = await port.upsertContact({
+      name: m.contact_name,
+      email: m.email,
+      phone: m.phone,
+      tags: ['strategy-call-inquiry'],
+    });
+    const note = await port.addNote(contact.id, strategyCallNote(m));
+    await sql`
+      update strategy_call_inquiries
+         set ghl_contact_id=${contact.id}, ghl_note_id=${note.id || null},
+             synced_at=now(), sync_error=null
+       where id = ${inquiryId}`;
+    return { status: 'ok' };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await sql`update strategy_call_inquiries set sync_error=${msg} where id = ${inquiryId}`;
+    return { status: 'error', reason: msg };
+  }
+}
+
+/** Drain unsynced strategy-call inquiries (safety net for the request-path best-effort). */
+export async function drainStrategyCallInquiries(limit = 50, port: GhlPort = defaultPort) {
+  if (!ghl.isConfigured) return { configured: false, processed: 0 };
+  const sql = getSql();
+  const rows = await sql`
+    select id from strategy_call_inquiries where synced_at is null order by created_at asc limit ${limit}`;
+  for (const r of rows) await syncStrategyCallInquiry(r.id, port);
   return { configured: true, processed: rows.length };
 }

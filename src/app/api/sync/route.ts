@@ -1,8 +1,9 @@
 /**
  * GET|POST /api/sync — the reconciliation worker (cron).
  *
- * Drains every enrollment with pending/error stage events and every unsynced
- * contact message, idempotently (Decision #4). Safe to call repeatedly and on a
+ * Drains every enrollment with pending/error stage events, every unsynced
+ * contact message, and every unsynced strategy-call inquiry, idempotently
+ * (Decision #4). Safe to call repeatedly and on a
  * schedule — the compare-and-set / last_processed gates make re-runs no-ops once
  * caught up. This is the safety net behind the best-effort sync in the request
  * path (so a GHL outage during a submission self-heals on the next tick).
@@ -11,7 +12,7 @@
  * is unset it is allowed only in local dev, and refused in production.
  */
 import { NextResponse, type NextRequest } from 'next/server';
-import { drainSyncQueue, drainContactMessages } from '@/lib/ghl/sync';
+import { drainSyncQueue, drainContactMessages, drainStrategyCallInquiries } from '@/lib/ghl/sync';
 import { dbConfigured } from '@/lib/db';
 import { sync as syncEnv, isDev } from '@/lib/env';
 
@@ -32,7 +33,8 @@ async function run(req: NextRequest) {
 
   const enrollments = await drainSyncQueue();
   const contacts = await drainContactMessages();
-  return NextResponse.json({ ok: true, enrollments, contacts });
+  const strategyCalls = await drainStrategyCallInquiries();
+  return NextResponse.json({ ok: true, enrollments, contacts, strategyCalls });
 }
 
 export const GET = run;

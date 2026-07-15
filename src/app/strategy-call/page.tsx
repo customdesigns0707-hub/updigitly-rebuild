@@ -2,9 +2,10 @@ import type { Metadata } from 'next';
 import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
 import { Reveal } from '@/components/Reveal';
-import { Placeholder } from '@/components/Placeholder';
 import { CalendarHandoff } from '@/components/CalendarHandoff';
+import { StrategyQualifierForm } from '@/components/strategy-call/StrategyQualifierForm';
 import { siteConfig } from '@/config/site';
+import { turnstile } from '@/lib/env';
 
 export const metadata: Metadata = {
   title: 'Strategy Call',
@@ -17,9 +18,11 @@ export const metadata: Metadata = {
  * hatch for unclear situations (Sitemap v2, Decision #3). Agenda +
  * expectation-setting are real. Calendar hand-off wired live in Chat 4
  * (CalendarHandoff, Decision #4: branded link/card). The pre-booking
- * qualifier stays a placeholder — out of Chat 4's named scope, picked up in a
- * later chat. No free-consulting implication and no acceptance guarantee in
- * the copy.
+ * qualifier (native form, POSTs to /api/strategy-call, persisted to Postgres,
+ * best-effort synced to GHL) is wired live here — sits alongside the calendar,
+ * never gates it (Decision #3: this page is also the escape hatch for unclear
+ * situations, so nothing here can block or delay booking). No free-consulting
+ * implication and no acceptance guarantee in the copy.
  */
 
 const AGENDA = [
@@ -81,12 +84,9 @@ export default function StrategyCallPage() {
             </Reveal>
           </div>
 
-          {/* Pre-booking qualifier — native form, built in Chat 2 */}
+          {/* Pre-booking qualifier — native form, wired live */}
           <div>
-            <Placeholder badge="PRE-BOOKING QUALIFIER" title="Pre-booking questions mount here" chat={2}>
-              The native qualifier (taps/radios, ~60&ndash;90s on mobile) is built in Chat 2, persisted to Postgres,
-              and reused so nothing is asked twice.
-            </Placeholder>
+            <StrategyQualifierForm turnstileSiteKey={turnstile.siteKey} />
           </div>
         </div>
       </div>

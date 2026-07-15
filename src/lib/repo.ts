@@ -13,6 +13,7 @@ import {
   deriveComplexityFlags,
 } from './enrollment';
 import type { BillingKey } from './plans';
+import type { StrategyQualifierAnswers } from './strategyCall';
 
 export interface Enrollment {
   id: string;
@@ -535,6 +536,36 @@ export async function insertContactMessage(input: ContactMessageInput): Promise<
     insert into contact_messages (name, business, email, phone, purpose, message, ip, user_agent)
     values (${input.name}, ${input.business ?? null}, ${input.email}, ${input.phone ?? null},
             ${input.purpose}, ${input.message}, ${input.ip}, ${input.userAgent})
+    returning id`;
+  return { id: row.id };
+}
+
+/* ─── Strategy Call pre-booking qualifier ──────────────────────────────────
+   Standalone per-submission record (no state machine) — modeled on
+   contact_messages. Never gates the calendar (Decision #3). */
+export interface StrategyCallInquiryInput {
+  contactName: string;
+  businessName: string;
+  email: string;
+  phone: string;
+  answers: StrategyQualifierAnswers;
+  goal: string;
+  anythingElse?: string;
+  ip: string | null;
+  userAgent: string | null;
+}
+
+export async function insertStrategyCallInquiry(
+  input: StrategyCallInquiryInput,
+): Promise<{ id: string }> {
+  const sql = getSql();
+  const [row] = await sql`
+    insert into strategy_call_inquiries
+      (contact_name, business_name, email, phone, answers, goal, anything_else, ip, user_agent)
+    values
+      (${input.contactName}, ${input.businessName}, ${input.email}, ${input.phone},
+       ${sql.json(input.answers as Parameters<typeof sql.json>[0])}, ${input.goal},
+       ${input.anythingElse ?? null}, ${input.ip}, ${input.userAgent})
     returning id`;
   return { id: row.id };
 }
