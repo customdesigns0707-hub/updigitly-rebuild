@@ -21,7 +21,9 @@ export function CheckoutButton({ secureId }: { secureId: string }) {
         return;
       }
       setError(
-        data.error === 'price_unavailable' || data.error === 'stripe_not_configured'
+        data.error === 'awaiting_approval'
+          ? 'We’re confirming your fit before payment. Your Updigitly contact will unlock this shortly — please refresh in a moment, or call us.'
+          : data.error === 'price_unavailable' || data.error === 'stripe_not_configured'
           ? 'Secure checkout isn’t available for a moment. Please try again shortly, or call us and we’ll help.'
           : 'We couldn’t open secure checkout. Please try again.',
       );

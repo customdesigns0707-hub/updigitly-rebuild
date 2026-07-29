@@ -42,6 +42,17 @@ export interface Enrollment {
   contractStartDate: string | null;
   initialTermEndDate: string | null;
   priceVersion: string | null;
+  // Approval-before-payment gate (interim launch, 2026-07-28). Checkout stays
+  // locked until Updigitly approves — cold-call approved live, inbound held.
+  paymentApproved: boolean;
+  paymentApprovedAt: string | null;
+  paymentApprovalNote: string | null;
+  // When Stripe will stop billing (fixed term, no auto-renewal). Set at payment.
+  subscriptionCancelAt: string | null;
+  // Subscription lifecycle beyond the initial payment (Chat 4 hardening).
+  cancelledAt: string | null;
+  paymentFailedAt: string | null;
+  paymentFailedCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -68,6 +79,13 @@ function mapEnrollment(r: any): Enrollment {
     contractStartDate: r.contract_start_date ?? null,
     initialTermEndDate: r.initial_term_end_date ?? null,
     priceVersion: r.price_version ?? null,
+    paymentApproved: r.payment_approved ?? false,
+    paymentApprovedAt: r.payment_approved_at ?? null,
+    paymentApprovalNote: r.payment_approval_note ?? null,
+    subscriptionCancelAt: r.subscription_cancel_at ?? null,
+    cancelledAt: r.cancelled_at ?? null,
+    paymentFailedAt: r.payment_failed_at ?? null,
+    paymentFailedCount: r.payment_failed_count ?? 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -158,6 +176,8 @@ export async function updateBilling(
 export interface RecordAcceptanceInput {
   secureId: string;
   disclosureVersion: string;
+  /** Version of the combined Service Order + Agreement the client accepted. */
+  agreementVersion: string;
   priceSnapshot: unknown;
   acceptanceText: string;
   ip: string | null;
@@ -194,9 +214,9 @@ export async function recordDisclosureAcceptance(
 
     await tx`
       insert into disclosure_acceptances
-        (enrollment_id, disclosure_version, price_snapshot, acceptance_text, ip, user_agent)
+        (enrollment_id, disclosure_version, agreement_version, price_snapshot, acceptance_text, ip, user_agent)
       values
-        (${enr.id}, ${input.disclosureVersion},
+        (${enr.id}, ${input.disclosureVersion}, ${input.agreementVersion},
          ${tx.json(input.priceSnapshot as Parameters<typeof tx.json>[0])},
          ${input.acceptanceText}, ${input.ip}, ${input.userAgent})`;
 
@@ -248,6 +268,44 @@ export async function markAwaitingPayment(
      where secure_id = ${secureId} and status in ('disclosure_accepted','awaiting_payment')
      returning *`;
   return row ? mapEnrollment(row) : null;
+}
+
+/**
+ * Approve an enrollment for payment (interim launch, 2026-07-28). The
+ * checkout button stays locked until this flips `payment_approved`. Two paths,
+ * one mechanism: a cold-call prospect is approved live on the call (immediate);
+ * an unassisted inbound enrollment is held until the operator reviews and calls
+ * this. Records the standard "fit reviewed and approved before payment" note.
+ * Idempotent: approving an already-approved enrollment just refreshes the note.
+ * Returns null only if the enrollment doesn't exist.
+ */
+export async function approvePayment(
+  secureId: string,
+  note?: string,
+): Promise<Enrollment | null> {
+  const sql = getSql();
+  const approvalNote = note?.trim() || 'Fit reviewed and approved by Updigitly before payment.';
+  const [row] = await sql`
+    update enrollments
+       set payment_approved = true,
+           payment_approved_at = coalesce(payment_approved_at, now()),
+           payment_approval_note = ${approvalNote},
+           updated_at = now()
+     where secure_id = ${secureId}
+     returning *`;
+  return row ? mapEnrollment(row) : null;
+}
+
+/** Record the timestamp Stripe is set to stop billing (fixed term). Idempotent. */
+export async function recordSubscriptionCancelAt(
+  enrollmentId: string,
+  cancelAt: Date,
+): Promise<void> {
+  const sql = getSql();
+  await sql`
+    update enrollments
+       set subscription_cancel_at = ${cancelAt.toISOString()}, updated_at = now()
+     where id = ${enrollmentId}`;
 }
 
 export interface StripePaymentInput {
@@ -568,4 +626,243 @@ export async function insertStrategyCallInquiry(
        ${input.anythingElse ?? null}, ${input.ip}, ${input.userAgent})
     returning id`;
   return { id: row.id };
+}
+
+/* ─── Subscription lifecycle (Chat 4 hardening) ────────────────────────────
+   The original webhook only ever listened for checkout.session.completed —
+   it had no idea if a subscription later got cancelled or a renewal payment
+   failed. These two events close that gap, using the SAME idempotent
+   stripe_events claim + compare-and-set pattern as recordStripePayment(). */
+
+export type SubscriptionEventResult =
+  | { ok: true; outcome: 'applied' | 'duplicate_event'; enrollment: Enrollment }
+  | { ok: false; reason: 'enrollment_not_found' };
+
+/**
+ * customer.subscription.deleted → the initial term ended or the client
+ * cancelled. Marks the enrollment cancelled (does not touch onboarding/
+ * fit-review state) and lets the sync worker tag GHL so the CRM reflects it.
+ */
+export async function recordSubscriptionCancelled(input: {
+  eventId: string;
+  eventType: string;
+  stripeSubscriptionId: string;
+  payload?: unknown;
+}): Promise<SubscriptionEventResult> {
+  const sql = getSql();
+  return sql.begin(async (tx) => {
+    const json = (v: unknown) => v as Parameters<typeof tx.json>[0];
+    const claimed = await tx`
+      insert into stripe_events (id, type, payload)
+      values (${input.eventId}, ${input.eventType}, ${tx.json(json(input.payload ?? {}))})
+      on conflict (id) do nothing
+      returning id`;
+    if (claimed.length === 0) {
+      const [enr] = await tx`
+        select * from enrollments where stripe_subscription_id = ${input.stripeSubscriptionId} limit 1`;
+      if (!enr) return { ok: false, reason: 'enrollment_not_found' } as const;
+      return { ok: true, outcome: 'duplicate_event', enrollment: mapEnrollment(enr) } as const;
+    }
+
+    const [enr] = await tx`
+      select * from enrollments where stripe_subscription_id = ${input.stripeSubscriptionId} for update`;
+    if (!enr) return { ok: false, reason: 'enrollment_not_found' } as const;
+
+    await tx`update stripe_events set enrollment_id = ${enr.id} where id = ${input.eventId}`;
+
+    const [updated] = await tx`
+      update enrollments set
+        status = case when status != 'cancelled' then 'cancelled' else status end,
+        cancelled_at = coalesce(cancelled_at, now()),
+        updated_at = now()
+      where id = ${enr.id}
+      returning *`;
+
+    await tx`
+      insert into stage_events (enrollment_id, stage, payload)
+      values (${enr.id}, 'cancelled', ${tx.json(json({ subscription: input.stripeSubscriptionId }))})
+      on conflict (enrollment_id, stage) do nothing`;
+
+    return { ok: true, outcome: 'applied', enrollment: mapEnrollment(updated) } as const;
+  });
+}
+
+/**
+ * invoice.payment_failed → a renewal charge bounced. Does NOT flip the
+ * enrollment's status (Stripe/GHL retry dunning on their own schedule and the
+ * subscription may recover) — just records the fact + count so the
+ * reconciliation report can surface accounts at risk, and lets GHL tag it for
+ * visibility. A distinct failed invoice on the same subscription is a new
+ * Stripe event id, so each failure creates its own (idempotent) note.
+ */
+export async function recordPaymentFailed(input: {
+  eventId: string;
+  eventType: string;
+  stripeSubscriptionId: string;
+  payload?: unknown;
+}): Promise<SubscriptionEventResult> {
+  const sql = getSql();
+  return sql.begin(async (tx) => {
+    const json = (v: unknown) => v as Parameters<typeof tx.json>[0];
+    const claimed = await tx`
+      insert into stripe_events (id, type, payload)
+      values (${input.eventId}, ${input.eventType}, ${tx.json(json(input.payload ?? {}))})
+      on conflict (id) do nothing
+      returning id`;
+    if (claimed.length === 0) {
+      const [enr] = await tx`
+        select * from enrollments where stripe_subscription_id = ${input.stripeSubscriptionId} limit 1`;
+      if (!enr) return { ok: false, reason: 'enrollment_not_found' } as const;
+      return { ok: true, outcome: 'duplicate_event', enrollment: mapEnrollment(enr) } as const;
+    }
+
+    const [enr] = await tx`
+      select * from enrollments where stripe_subscription_id = ${input.stripeSubscriptionId} for update`;
+    if (!enr) return { ok: false, reason: 'enrollment_not_found' } as const;
+
+    await tx`update stripe_events set enrollment_id = ${enr.id} where id = ${input.eventId}`;
+
+    const [updated] = await tx`
+      update enrollments set
+        payment_failed_at = now(),
+        payment_failed_count = payment_failed_count + 1,
+        updated_at = now()
+      where id = ${enr.id}
+      returning *`;
+
+    // Not unique-guarded by (enrollment_id, stage) since repeated failures on
+    // the same subscription are each a genuinely new event — key on the
+    // Stripe event id instead (already claimed above) so every failure still
+    // gets exactly one GHL note via a distinct stage_events row.
+    await tx`
+      insert into stage_events (enrollment_id, stage, payload)
+      values (${enr.id}, ${'payment_failed_' + input.eventId},
+              ${tx.json(json({ subscription: input.stripeSubscriptionId, failedCount: updated.payment_failed_count }))})
+      on conflict (enrollment_id, stage) do nothing`;
+
+    return { ok: true, outcome: 'applied', enrollment: mapEnrollment(updated) } as const;
+  });
+}
+
+/* ─── Reconciliation report (Chat 4 hardening) ─────────────────────────────
+   Read-only. Surfaces drift the request-path best-effort sync can't self-heal:
+   payments Stripe confirmed that never matched an enrollment, checkouts that
+   started but never confirmed, and syncs that have been failing repeatedly.
+   Never mutates anything — a human (or a future automated alert) decides what
+   to do with what it finds. */
+export interface ReconciliationReport {
+  unmatchedStripeEvents: Array<{ id: string; type: string; receivedAt: string }>;
+  staleAwaitingPayment: Array<{ secureId: string; businessName: string; email: string; updatedAt: string }>;
+  stuckSyncs: Array<{
+    enrollmentId: string;
+    stage: string;
+    attempts: number;
+    lastError: string | null;
+    createdAt: string;
+  }>;
+  stuckContactMessages: Array<{ id: string; email: string; syncError: string | null; createdAt: string }>;
+  stuckStrategyCallInquiries: Array<{ id: string; email: string; syncError: string | null; createdAt: string }>;
+  /** Paid enrollments whose Stripe subscription never got its fixed-term
+   *  cancel_at set — these would silently auto-renew if not corrected. */
+  paidWithoutCancelAt: Array<{
+    secureId: string;
+    businessName: string;
+    stripeSubscriptionId: string | null;
+    billingKey: string;
+    paidAt: string | null;
+  }>;
+}
+
+export async function getReconciliationReport(): Promise<ReconciliationReport> {
+  const sql = getSql();
+
+  // Stripe confirmed a payment (event recorded) but it never matched an
+  // enrollment (bad/missing client_reference_id) — money moved with no linked
+  // record. Highest-priority item in this report.
+  const unmatchedStripeEvents = await sql`
+    select id, type, received_at from stripe_events
+     where enrollment_id is null
+     order by received_at desc
+     limit 50`;
+
+  // Checkout session created (awaiting_payment) more than 24h ago with no
+  // webhook confirmation since — likely an abandoned checkout, but also the
+  // shape a lost webhook delivery would take. Worth a manual Stripe-dashboard
+  // cross-check before assuming "just abandoned."
+  const staleAwaitingPayment = await sql`
+    select secure_id, business_name, email, updated_at from enrollments
+     where status = 'awaiting_payment'
+       and updated_at < now() - interval '24 hours'
+     order by updated_at asc
+     limit 50`;
+
+  // GHL sync events that have failed repeatedly and are still sitting in
+  // 'error' — the per-enrollment ordering guard means every later event for
+  // that enrollment is also blocked behind it.
+  const stuckSyncs = await sql`
+    select enrollment_id, stage, sync_attempts, last_error, created_at from stage_events
+     where sync_status = 'error' and sync_attempts >= 3
+     order by created_at asc
+     limit 50`;
+
+  const stuckContactMessages = await sql`
+    select id, email, sync_error, created_at from contact_messages
+     where sync_error is not null and synced_at is null
+     order by created_at asc
+     limit 50`;
+
+  const stuckStrategyCallInquiries = await sql`
+    select id, email, sync_error, created_at from strategy_call_inquiries
+     where sync_error is not null and synced_at is null
+     order by created_at asc
+     limit 50`;
+
+  // Paid, but the fixed-term cap never landed on the Stripe subscription. Left
+  // uncorrected these would auto-renew — the one thing the interim model must
+  // never do. The webhook sets it; this catches any that slipped through.
+  const paidWithoutCancelAt = await sql`
+    select secure_id, business_name, stripe_subscription_id, billing_key, paid_at from enrollments
+     where status = 'paid' and subscription_cancel_at is null
+     order by paid_at asc
+     limit 50`;
+
+  return {
+    unmatchedStripeEvents: unmatchedStripeEvents.map((r: any) => ({
+      id: r.id,
+      type: r.type,
+      receivedAt: r.received_at,
+    })),
+    staleAwaitingPayment: staleAwaitingPayment.map((r: any) => ({
+      secureId: r.secure_id,
+      businessName: r.business_name,
+      email: r.email,
+      updatedAt: r.updated_at,
+    })),
+    stuckSyncs: stuckSyncs.map((r: any) => ({
+      enrollmentId: r.enrollment_id,
+      stage: r.stage,
+      attempts: r.sync_attempts,
+      lastError: r.last_error,
+      createdAt: r.created_at,
+    })),
+    stuckContactMessages: stuckContactMessages.map((r: any) => ({
+      id: r.id,
+      email: r.email,
+      syncError: r.sync_error,
+      createdAt: r.created_at,
+    })),
+    stuckStrategyCallInquiries: stuckStrategyCallInquiries.map((r: any) => ({
+      id: r.id,
+      email: r.email,
+      syncError: r.sync_error,
+      createdAt: r.created_at,
+    })),
+    paidWithoutCancelAt: paidWithoutCancelAt.map((r: any) => ({
+      secureId: r.secure_id,
+      businessName: r.business_name,
+      stripeSubscriptionId: r.stripe_subscription_id,
+      billingKey: r.billing_key,
+      paidAt: r.paid_at,
+    })),
+  };
 }

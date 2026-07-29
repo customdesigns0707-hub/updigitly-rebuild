@@ -10,7 +10,7 @@ import { PRICING_DISCLOSURES } from '@/lib/plans';
 export const metadata: Metadata = {
   title: 'Pricing',
   description:
-    'Managed growth plans — Essential, Growth Engine, and Scale. Fixed pricing, a clear 6-month initial term, and one accountable team. Enrollment opens in the next build stage.',
+    'Managed growth plans — Essential, Growth Engine, and Scale. Fixed pricing, a clear 6-month initial term, no automatic renewal, and one accountable team.',
 };
 
 /**
@@ -30,7 +30,7 @@ const PILLARS = [
 const FAQ = [
   {
     q: 'Why is there a 6-month initial term?',
-    a: 'Building and operating a connected system takes long enough to produce a real result. The 6-month initial service commitment applies to every plan and is shown clearly before you pay — "monthly" is simply the payment schedule, not a one-month term. After the initial term, plans run month-to-month.',
+    a: 'Building and operating a connected system takes long enough to produce a real result. The 6-month initial service commitment applies to every plan and is shown clearly before you pay — "monthly" is simply the payment schedule, not a one-month term. Billing is a fixed term with no automatic renewal — at the end of the term it stops on its own, and continuing is a new engagement we agree separately.',
   },
   {
     q: 'What do the prepaid options change?',

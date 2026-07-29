@@ -153,7 +153,7 @@ export default async function ReviewPage({ params }: { params: { token: string }
           <div style={{ marginTop: 28 }}>
             <span className="accepted-flag">
               <span className="pulse" style={{ background: 'var(--green)' }} />
-              Disclosure accepted — recorded
+              Agreement accepted — recorded
             </span>
             <div style={{ marginTop: 22 }}>
               {enrollment.status === 'paid' ? (
@@ -164,8 +164,27 @@ export default async function ReviewPage({ params }: { params: { token: string }
                 >
                   You&rsquo;re enrolled — view your confirmation →
                 </Link>
-              ) : (
+              ) : enrollment.paymentApproved ? (
                 <CheckoutButton secureId={enrollment.secureId} />
+              ) : (
+                <div className="soft-banner">
+                  <div className="sb-title">
+                    <span className="pulse" />One quick step before payment
+                  </div>
+                  <p>
+                    Your agreement is recorded. Before we take payment, an Updigitly team member confirms your plan is
+                    the right fit — a short, deliberate check, not a delay. If you&rsquo;re on a call with us now,
+                    we&rsquo;ll unlock secure payment while we&rsquo;re on the line. Otherwise we&rsquo;ll be in touch
+                    shortly, and this page will show the payment step once it&rsquo;s ready.
+                  </p>
+                  <p>
+                    Questions in the meantime? Call{' '}
+                    <a href={siteConfig.phone.href} style={{ color: 'var(--amber)' }}>
+                      {siteConfig.phone.display}
+                    </a>
+                    .
+                  </p>
+                </div>
               )}
             </div>
           </div>

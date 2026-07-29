@@ -12,7 +12,10 @@ export function Footer() {
     <footer className="site-footer">
       <div className="sf-top">
         <div className="sf-brand">
-          <div className="sf-logo">Updigitly<span>.</span></div>
+          <div className="sf-logo">
+            <span className="logo-mark" aria-hidden="true">Up</span>
+            Updigitly<span>.</span>
+          </div>
           <p>
             A managed digital growth partner. One connected system — accountable for the growth it produces.
           </p>

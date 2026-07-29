@@ -14,7 +14,7 @@ import 'server-only';
 import Stripe from 'stripe';
 import { stripe as stripeEnv } from './env';
 import type { EnrollablePlanKey } from './enrollment';
-import type { BillingKey } from './plans';
+import { fixedTermMonths, type BillingKey } from './plans';
 
 let _client: Stripe | null = null;
 
@@ -73,4 +73,56 @@ export async function resolvePriceId(plan: EnrollablePlanKey, billing: BillingKe
     throw new Error(`No active Stripe price for lookup_key "${key}". Run the price seed first.`);
   }
   return price.id;
+}
+
+/** Add N calendar months to a unix (seconds) timestamp; returns a unix-seconds ts.
+ *  Calendar-month math matches how Stripe anchors monthly/interval renewals. */
+function addMonthsUnix(unixSeconds: number, months: number): number {
+  const d = new Date(unixSeconds * 1000);
+  d.setMonth(d.getMonth() + months);
+  return Math.floor(d.getTime() / 1000);
+}
+
+export interface FixedTermResult {
+  /** The cancel_at timestamp now set on the subscription. */
+  cancelAt: Date;
+  /** True if this call set it; false if it was already present (idempotent). */
+  applied: boolean;
+}
+
+/**
+ * Enforce the interim fixed term: cap a subscription with `cancel_at` so billing
+ * STOPS at the end of the final paid period (NO automatic renewal). Monthly runs
+ * 6 installments; 6-month prepaid runs one 6-month period; annual prepaid one
+ * 12-month period — then Stripe cancels, no renewal invoice.
+ *
+ * Idempotent: if the subscription already has a `cancel_at`, it is left as-is and
+ * returned (applied=false). `cancel_at` is a long-stable Subscription parameter
+ * (unlike Checkout's `subscription_data`, whose support varies), so setting it on
+ * the created subscription is the reliable mechanism. Aligns to the subscription's
+ * own start_date so the boundary is exact regardless of when checkout was created.
+ */
+export async function ensureFixedTermCancel(
+  subscriptionId: string,
+  billing: BillingKey,
+): Promise<FixedTermResult> {
+  const stripe = getStripe();
+  const sub = await stripe.subscriptions.retrieve(subscriptionId);
+
+  if (sub.cancel_at) {
+    return { cancelAt: new Date(sub.cancel_at * 1000), applied: false };
+  }
+
+  const months = fixedTermMonths(billing);
+  const anchor = sub.start_date ?? Math.floor(Date.now() / 1000);
+  const cancelAtUnix = addMonthsUnix(anchor, months);
+
+  await stripe.subscriptions.update(subscriptionId, {
+    cancel_at: cancelAtUnix,
+    // Do not prorate anything when the fixed term ends — the final period was
+    // fully paid; cancel_at just prevents the next renewal.
+    proration_behavior: 'none',
+  });
+
+  return { cancelAt: new Date(cancelAtUnix * 1000), applied: true };
 }

@@ -35,13 +35,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const enrollment = await getEnrollmentBySecureId(params.id);
   if (!enrollment) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-  // Gate: disclosure must be accepted first.
+  // Gate: disclosure / agreement must be accepted first.
   if (enrollment.status === 'qualifier_submitted') {
     return NextResponse.json({ error: 'disclosure_not_accepted' }, { status: 409 });
   }
   // Already paid — hand straight to confirmation (never charge twice).
   if (enrollment.status === 'paid') {
     return NextResponse.json({ url: `${baseUrl}/enroll/confirmation?ref=${enrollment.secureId}` });
+  }
+  // Gate (interim launch, 2026-07-28): approval before payment. Checkout stays
+  // locked until Updigitly approves this enrollment — cold-call prospects are
+  // approved live on the call; unassisted inbound enrollments are held until an
+  // operator reviews and approves. Never auto-approved.
+  if (!enrollment.paymentApproved) {
+    return NextResponse.json({ error: 'awaiting_approval' }, { status: 409 });
   }
 
   // Best-effort: ensure the GHL contact exists before payment. Never blocks

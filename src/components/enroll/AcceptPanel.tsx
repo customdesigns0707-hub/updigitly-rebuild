@@ -39,12 +39,12 @@ export function AcceptPanel({ secureId }: { secureId: string }) {
       <label className="accept-check" data-hover>
         <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
         <span>
-          I&rsquo;ve reviewed the plan, billing option, the charge today, the recurring charge, the 6-month
-          initial term and minimum obligation, and the renewal behavior above, and I agree to the{' '}
-          <Link href="/legal" style={{ color: 'var(--green)' }}>
-            terms
+          I am authorized to enter this agreement for the business identified above. I have reviewed and agree to
+          the{' '}
+          <Link href="/legal/agreement" style={{ color: 'var(--green)' }} target="_blank">
+            Service Order and Agreement
           </Link>
-          .
+          , including the fixed term, payment schedule, total obligation, refund policy, and scope limitations.
         </span>
       </label>
 

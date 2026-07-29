@@ -9,6 +9,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getEnrollmentBySecureId, recordDisclosureAcceptance } from '@/lib/repo';
 import { buildPriceSnapshot, DISCLOSURE_VERSION, FAIR_RESOLUTION_SENTENCE } from '@/lib/enrollment';
+import { AGREEMENT_VERSION } from '@/config/legal';
 import { syncEnrollment } from '@/lib/ghl/sync';
 import { clientIp, userAgent } from '@/lib/request';
 import { usd } from '@/lib/plans';
@@ -24,7 +25,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const snapshot = buildPriceSnapshot(enrollment.planKey, enrollment.billingKey);
 
   const acceptanceText = [
-    `Accepted the ${snapshot.planName} commitment disclosure (${DISCLOSURE_VERSION}).`,
+    `Authorized representative accepted the ${snapshot.planName} Service Order and Agreement ` +
+      `(Agreement ${AGREEMENT_VERSION}; disclosure ${DISCLOSURE_VERSION}) for the business identified above.`,
     `Billing: ${snapshot.billingLabel}. Charged today: ${usd(snapshot.immediateCharge)}.`,
     `Recurring: ${snapshot.recurringText}`,
     `Initial term: ${snapshot.initialTermMonths} months. Minimum obligation: ${usd(snapshot.minCommitment)}.`,
@@ -35,12 +37,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const result = await recordDisclosureAcceptance({
     secureId: enrollment.secureId,
     disclosureVersion: DISCLOSURE_VERSION,
+    agreementVersion: AGREEMENT_VERSION,
     priceSnapshot: snapshot,
     acceptanceText,
     ip: clientIp(req),
     userAgent: userAgent(req),
     eventPayload: {
       version: DISCLOSURE_VERSION,
+      agreementVersion: AGREEMENT_VERSION,
       plan: snapshot.planName,
       billing: snapshot.billingLabel,
       immediateCharge: snapshot.immediateCharge,

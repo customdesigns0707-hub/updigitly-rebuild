@@ -66,6 +66,17 @@ function tagsForStage(stage: string, enr: any): string[] {
     // moment the 7-day fit-review clock starts (Decision #2).
     return ['onboarding-info-submitted'];
   }
+  if (stage === 'cancelled') {
+    // Durable, additive — the client-paid tag is deliberately NOT removed
+    // (Decision #4's additive-only rule), so GHL segmentation shows both the
+    // history and the current state.
+    return ['client-cancelled'];
+  }
+  if (stage.startsWith('payment_failed_')) {
+    // Dunning visibility only — never removes client-paid, never changes
+    // enrollment status on its own (see repo.ts recordPaymentFailed).
+    return ['payment-failed'];
+  }
   return [];
 }
 
@@ -168,6 +179,24 @@ function onboardingSubmittedNote(enr: any, ev: any): string {
     .join('\n');
 }
 
+function cancelledNote(enr: any): string {
+  return [
+    `Subscription CANCELLED via Stripe.`,
+    `Business: ${enr.business_name} · ${enr.email}`,
+    `client-paid tag left in place (history); client-cancelled added for segmentation.`,
+    `Billing/cancellation evidence is authoritative in Stripe.`,
+  ].join('\n');
+}
+
+function paymentFailedNote(enr: any, ev: any): string {
+  const p = ev.payload ?? {};
+  return [
+    `Renewal payment FAILED via Stripe (attempt #${p.failedCount ?? '?'} on this subscription).`,
+    `Business: ${enr.business_name} · ${enr.email}`,
+    `Stripe/dunning will retry automatically — this note is visibility only, no status change here.`,
+  ].join('\n');
+}
+
 /** Apply a single stage event to GHL, compare-and-set. Returns the contact id. */
 async function applyStage(enr: any, ev: any, contactId: string | null, port: GhlPort): Promise<string> {
   const desiredTags = tagsForStage(ev.stage, enr);
@@ -190,6 +219,8 @@ async function applyStage(enr: any, ev: any, contactId: string | null, port: Ghl
     if (ev.stage === 'disclosure_accepted') await port.addNote(res.id, disclosureNote(enr, ev));
     if (ev.stage === 'paid') await port.addNote(res.id, paidNote(enr, ev));
     if (ev.stage === 'onboarding_submitted') await port.addNote(res.id, onboardingSubmittedNote(enr, ev));
+    if (ev.stage === 'cancelled') await port.addNote(res.id, cancelledNote(enr));
+    if (ev.stage.startsWith('payment_failed_')) await port.addNote(res.id, paymentFailedNote(enr, ev));
     return res.id;
   }
 
@@ -211,6 +242,8 @@ async function applyStage(enr: any, ev: any, contactId: string | null, port: Ghl
   if (ev.stage === 'disclosure_accepted') await port.addNote(contactId, disclosureNote(enr, ev));
   if (ev.stage === 'paid') await port.addNote(contactId, paidNote(enr, ev));
   if (ev.stage === 'onboarding_submitted') await port.addNote(contactId, onboardingSubmittedNote(enr, ev));
+  if (ev.stage === 'cancelled') await port.addNote(contactId, cancelledNote(enr));
+  if (ev.stage.startsWith('payment_failed_')) await port.addNote(contactId, paymentFailedNote(enr, ev));
   return contactId;
 }
 

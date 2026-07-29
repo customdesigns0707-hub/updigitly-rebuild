@@ -149,7 +149,8 @@ export function answerLabel(qId: string, value: string): string {
 /* ─── Disclosure snapshot ──────────────────────────────────────────────────
    The frozen money view stored as acceptance evidence. LOUD, and stored
    verbatim so the record can't drift from what the visitor saw (Decision #4). */
-export const DISCLOSURE_VERSION = 'v1-2026-07';
+// v2 (interim launch, 2026-07-28): fixed-term billing with NO automatic renewal.
+export const DISCLOSURE_VERSION = 'v2-2026-07';
 
 /** LOCKED verbatim (Decision #2) — the doubt-reducer shown near checkout. */
 export const FAIR_RESOLUTION_SENTENCE =
@@ -197,21 +198,23 @@ export function buildPriceSnapshot(planKey: EnrollablePlanKey, billingKey: Billi
   let recurringText: string;
   if (billingKey === 'monthly') {
     recurringAmount = p.effectiveMonthly;
-    recurringText = `${usd(p.effectiveMonthly)} per month, starting one month after your first charge.`;
-  } else {
-    recurringAmount = p.chargedNow;
     recurringText =
-      `${usd(p.chargedNow)} every ${p.coversMonths} months at renewal — ` +
-      `and never silently: you get a renewal notice at least 30 days out and a reminder ~7 days before, ` +
-      `each showing the exact date and amount, with clear instructions to turn renewal off.`;
+      `${usd(p.effectiveMonthly)} per month for the ${INITIAL_TERM_MONTHS}-month initial term ` +
+      `(${INITIAL_TERM_MONTHS} payments in total), starting one month after your first charge. ` +
+      `Billing then stops automatically — there is no auto-renewal.`;
+  } else {
+    recurringAmount = 0;
+    recurringText =
+      `No recurring charge. Your one-time ${usd(p.chargedNow)} payment covers ${p.coversMonths} months in full. ` +
+      `This is a fixed prepaid term with no automatic renewal — nothing is charged again unless you start a new engagement.`;
   }
 
   const renewalBehavior =
     billingKey === 'monthly'
-      ? `After the ${INITIAL_TERM_MONTHS}-month initial term, billing continues month-to-month and ` +
-        `auto-renewal can be turned off before your next billing date.`
-      : `After the ${INITIAL_TERM_MONTHS}-month initial term this prepaid plan may auto-renew, but only ` +
-        `with advance notice (≥30 days) plus a ~7-day reminder — you can disable renewal before it charges.`;
+      ? `This is a fixed ${INITIAL_TERM_MONTHS}-month term. After the ${INITIAL_TERM_MONTHS} monthly payments, ` +
+        `billing stops automatically — there is no auto-renewal. Continuing later is a new, separately agreed engagement.`
+      : `This is a fixed prepaid term covering ${p.coversMonths} months. Billing stops automatically at the end — ` +
+        `there is no auto-renewal. Continuing later is a new, separately agreed engagement.`;
 
   return {
     planKey,

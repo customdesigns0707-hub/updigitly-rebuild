@@ -10,11 +10,18 @@
  *
  * Guard: `Authorization: Bearer <SYNC_SECRET>` (or `?secret=`). When SYNC_SECRET
  * is unset it is allowed only in local dev, and refused in production.
+ *
+ * Chat 4 hardening: after draining, also runs the read-only reconciliation
+ * report (see /api/admin/reconcile) and logs a warning when it finds
+ * anything, so drift the drain itself can't fix (unmatched Stripe events,
+ * stale awaiting_payment, stuck syncs) surfaces in the daily cron's Vercel
+ * function logs without a separate scheduled job or exposed secret.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { drainSyncQueue, drainContactMessages, drainStrategyCallInquiries } from '@/lib/ghl/sync';
 import { dbConfigured } from '@/lib/db';
 import { sync as syncEnv, isDev } from '@/lib/env';
+import { getReconciliationReport } from '@/lib/repo';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,7 +41,19 @@ async function run(req: NextRequest) {
   const enrollments = await drainSyncQueue();
   const contacts = await drainContactMessages();
   const strategyCalls = await drainStrategyCallInquiries();
-  return NextResponse.json({ ok: true, enrollments, contacts, strategyCalls });
+
+  const reconciliation = await getReconciliationReport();
+  const findings =
+    reconciliation.unmatchedStripeEvents.length +
+    reconciliation.staleAwaitingPayment.length +
+    reconciliation.stuckSyncs.length +
+    reconciliation.stuckContactMessages.length +
+    reconciliation.stuckStrategyCallInquiries.length;
+  if (findings > 0) {
+    console.warn(`[sync cron] reconciliation found ${findings} item(s) needing a look:`, reconciliation);
+  }
+
+  return NextResponse.json({ ok: true, enrollments, contacts, strategyCalls, reconciliation: { findings } });
 }
 
 export const GET = run;

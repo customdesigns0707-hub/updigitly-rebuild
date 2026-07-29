@@ -20,7 +20,6 @@ export const metadata: Metadata = {
     type: 'website',
   },
   twitter: { card: 'summary_large_image' },
-  icons: { icon: '/favicon.ico' },
 };
 
 export const viewport: Viewport = {

@@ -12,9 +12,14 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import type Stripe from 'stripe';
-import { getStripe, stripeConfigured } from '@/lib/stripe';
+import { getStripe, stripeConfigured, ensureFixedTermCancel } from '@/lib/stripe';
 import { stripe as stripeEnv } from '@/lib/env';
-import { recordStripePayment } from '@/lib/repo';
+import {
+  recordStripePayment,
+  recordSubscriptionCancelled,
+  recordPaymentFailed,
+  recordSubscriptionCancelAt,
+} from '@/lib/repo';
 import { syncEnrollment } from '@/lib/ghl/sync';
 
 export const runtime = 'nodejs';
@@ -86,11 +91,92 @@ export async function POST(req: NextRequest) {
           console.error('[stripe webhook] GHL sync deferred (cron will retry):', err);
         }
       }
+
+      // Enforce the interim fixed term (NO auto-renewal): cap the subscription
+      // with cancel_at so billing stops at the end of the final paid period.
+      // Attempted on EVERY completed-session delivery (applied/already_paid/
+      // duplicate) so it self-heals — and is intentionally NOT caught: if it
+      // fails, the outer catch returns 500 and Stripe retries until it sticks.
+      // recordStripePayment is idempotent, so retries are safe. The
+      // reconciliation report also surfaces any paid subscription still missing
+      // its cap, as a backstop.
+      const subId = subscriptionId(session.subscription);
+      if (subId) {
+        const ft = await ensureFixedTermCancel(subId, result.enrollment.billingKey);
+        await recordSubscriptionCancelAt(result.enrollment.id, ft.cancelAt);
+      }
+
       return NextResponse.json({ received: true, outcome: result.outcome });
     }
 
-    // Narrowly subscribed; other event types are acknowledged. (Expand later:
-    // invoice.payment_failed, customer.subscription.deleted, etc.)
+    // customer.subscription.deleted — the initial term ended or the client
+    // cancelled (whether from Stripe's side, the Customer Portal, or our own
+    // dashboard). Marks the enrollment cancelled so GHL segmentation stays
+    // accurate (Chat 4 hardening — the webhook previously only knew about the
+    // initial payment).
+    if (event.type === 'customer.subscription.deleted') {
+      const sub = event.data.object as Stripe.Subscription;
+      const result = await recordSubscriptionCancelled({
+        eventId: event.id,
+        eventType: event.type,
+        stripeSubscriptionId: sub.id,
+        payload: { eventId: event.id, type: event.type, subscription: sub.id },
+      });
+      if (!result.ok) {
+        console.error('[stripe webhook] no enrollment for subscription', sub.id);
+        return NextResponse.json({ received: true, unmatched: true });
+      }
+      if (result.outcome === 'applied') {
+        try {
+          await syncEnrollment(result.enrollment.id);
+        } catch (err) {
+          console.error('[stripe webhook] GHL sync deferred (cron will retry):', err);
+        }
+      }
+      return NextResponse.json({ received: true, outcome: result.outcome });
+    }
+
+    // invoice.payment_failed — a renewal charge bounced. Visibility only (see
+    // repo.ts recordPaymentFailed) — Stripe's own retry/dunning schedule
+    // governs whether the subscription recovers or eventually gets cancelled
+    // (which arrives separately as customer.subscription.deleted above).
+    if (event.type === 'invoice.payment_failed') {
+      const invoice = event.data.object as Stripe.Invoice;
+      // Stripe moved `invoice.subscription` under `invoice.parent.subscription_details`
+      // in newer API versions — check both shapes so this works regardless of
+      // which API version this Stripe account is pinned to.
+      const legacy = (invoice as unknown as { subscription?: string | { id: string } | null }).subscription;
+      const nested = (
+        invoice as unknown as {
+          parent?: { subscription_details?: { subscription?: string | { id: string } | null } | null } | null;
+        }
+      ).parent?.subscription_details?.subscription;
+      const subField = legacy ?? nested;
+      const subId = typeof subField === 'string' ? subField : subField?.id ?? null;
+      if (!subId) {
+        return NextResponse.json({ received: true, ignored: 'no_subscription' });
+      }
+      const result = await recordPaymentFailed({
+        eventId: event.id,
+        eventType: event.type,
+        stripeSubscriptionId: subId,
+        payload: { eventId: event.id, type: event.type, invoice: invoice.id },
+      });
+      if (!result.ok) {
+        console.error('[stripe webhook] no enrollment for subscription', subId);
+        return NextResponse.json({ received: true, unmatched: true });
+      }
+      if (result.outcome === 'applied') {
+        try {
+          await syncEnrollment(result.enrollment.id);
+        } catch (err) {
+          console.error('[stripe webhook] GHL sync deferred (cron will retry):', err);
+        }
+      }
+      return NextResponse.json({ received: true, outcome: result.outcome });
+    }
+
+    // Everything else is acknowledged but ignored.
     return NextResponse.json({ received: true, ignored: event.type });
   } catch (err) {
     console.error('[stripe webhook] handler error:', err);

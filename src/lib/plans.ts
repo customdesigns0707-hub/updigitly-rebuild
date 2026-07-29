@@ -114,6 +114,17 @@ export const PRICING_DISCLOSURES: string[] = [
   'Complex, multi-location, or multi-brand needs are scoped as a tailored proposal — start with a strategy call.',
 ];
 
+/**
+ * Fixed-term length in MONTHS for a billing option — how long Stripe should bill
+ * before it stops (interim launch: NO automatic renewal; the subscription is
+ * capped with `cancel_at`). Monthly runs the 6-month initial term as 6
+ * installments; a 6-month prepaid covers 6 months in one charge; an annual
+ * prepaid covers 12 months in one charge. In every case billing then stops.
+ */
+export function fixedTermMonths(billing: BillingKey): number {
+  return billing === 'monthly' ? INITIAL_TERM_MONTHS : BILLING[billing].prepaidMonths;
+}
+
 /** Formats a number as USD, e.g. 3763.8 -> "$3,763.80". Pass `trim` to drop .00. */
 export function usd(n: number, trim = false): string {
   const s = '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

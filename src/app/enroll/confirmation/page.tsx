@@ -121,6 +121,16 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
                 </span>
               </li>
               <li>
+                <span className="ci-lbl">Your agreement</span>
+                <span className="ci-val">
+                  A copy of the terms you accepted is always available on the{' '}
+                  <Link href="/legal/agreement" style={{ color: 'var(--green)' }}>
+                    Service Order &amp; Agreement
+                  </Link>{' '}
+                  page.
+                </span>
+              </li>
+              <li>
                 <span className="ci-lbl">Reference</span>
                 <span className="ci-val" style={{ fontFamily: 'var(--font-mono),monospace', fontSize: 13 }}>
                   {enrollment.secureId}
