@@ -87,7 +87,8 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
                 <li>
                   <span className="ci-lbl">Commitment</span>
                   <span className="ci-val">
-                    {snap.initialTermMonths}-month initial term · minimum obligation {usd(snap.minCommitment)}
+                    {snap.commitmentMonths ?? snap.initialTermMonths}-month initial term · minimum obligation{' '}
+                    {usd(snap.minCommitment)}
                   </span>
                 </li>
               )}
@@ -103,7 +104,12 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
                 <span className="ci-lbl">Fit review</span>
                 <span className="ci-val">
                   We review fit early in onboarding, before any heavy build. If the plan can&rsquo;t deliver the core
-                  engagement as presented, we contact you and provide a fair resolution.
+                  engagement as presented, we&rsquo;ll first have a reasonable opportunity to correct it; if it
+                  isn&rsquo;t corrected, you receive a credit or prorated refund for the undelivered portion, per our{' '}
+                  <Link href="/legal#cancellation" style={{ color: 'var(--green)' }}>
+                    refund policy
+                  </Link>
+                  .
                 </span>
               </li>
               <li>

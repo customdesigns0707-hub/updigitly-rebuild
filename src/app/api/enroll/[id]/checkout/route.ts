@@ -72,7 +72,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const commitmentLine =
     `${snapshot.planName} · ${snapshot.billingLabel}. ${usd(snapshot.immediateCharge)} charged today · ` +
-    `${snapshot.initialTermMonths}-month initial service term (minimum total ${usd(snapshot.minCommitment)}). ` +
+    `${snapshot.commitmentMonths}-month initial service term (minimum total ${usd(snapshot.minCommitment)}). ` +
     `You reviewed and accepted these terms on the previous step.`;
 
   const session = await stripe.checkout.sessions.create({

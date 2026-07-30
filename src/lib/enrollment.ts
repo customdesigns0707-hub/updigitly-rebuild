@@ -15,6 +15,7 @@ import {
   BILLING,
   INITIAL_TERM_MONTHS,
   priceFor,
+  fixedTermMonths,
   usd,
   type BillingKey,
   type PlanKey,
@@ -172,7 +173,14 @@ export interface PriceSnapshot {
   coversMonths: number;
   savings: number;
   discount: number;
+  /** Fixed legal minimum (6mo) — invariant across billing choice; see review page copy. */
   initialTermMonths: number;
+  /** Actual commitment length for THIS billing choice: 6 for monthly/sixPrepaid, 12 for
+   *  annualPrepaid. Use this (not initialTermMonths) anywhere the term length is paired
+   *  with a dollar figure that reflects the full prepaid coverage — otherwise annual
+   *  prepaid reads as "6-month term" next to a 12-month charge. Matches fixedTermMonths(),
+   *  the same function that sets the real Stripe subscription cancel_at. */
+  commitmentMonths: number;
   /** Minimum total obligation over the initial term (billing-aware). */
   minCommitment: number;
   minCommitmentText: string;
@@ -188,9 +196,14 @@ export function buildPriceSnapshot(planKey: EnrollablePlanKey, billingKey: Billi
   const b = BILLING[billingKey];
   const p = priceFor(plan.base, billingKey);
 
-  // Minimum total obligation over the 6-month initial term, billing-aware:
+  // Actual commitment length for this billing choice: 6 for monthly/sixPrepaid,
+  // 12 for annualPrepaid. Same function that sets the real Stripe cancel_at, so
+  // the displayed term length and the actual billing cap can never drift apart.
+  const commitmentMonths = fixedTermMonths(billingKey);
+
+  // Minimum total obligation over the commitment length, billing-aware:
   //  monthly → 6 × base (owed if cancelled early); prepaid → the amount already
-  //  charged (fully covers the initial term).
+  //  charged (fully covers the commitment).
   const minCommitment =
     billingKey === 'monthly' ? Math.round(plan.base * INITIAL_TERM_MONTHS * 100) / 100 : p.chargedNow;
 
@@ -232,8 +245,9 @@ export function buildPriceSnapshot(planKey: EnrollablePlanKey, billingKey: Billi
     savings: p.savings,
     discount: p.discount,
     initialTermMonths: INITIAL_TERM_MONTHS,
+    commitmentMonths,
     minCommitment,
-    minCommitmentText: `${usd(minCommitment)} — your minimum total obligation for the ${INITIAL_TERM_MONTHS}-month initial term.`,
+    minCommitmentText: `${usd(minCommitment)} — your minimum total obligation for the ${commitmentMonths}-month initial term.`,
     renewalBehavior,
     disclosureVersion: DISCLOSURE_VERSION,
     fairResolution: FAIR_RESOLUTION_SENTENCE,

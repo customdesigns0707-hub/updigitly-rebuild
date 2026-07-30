@@ -92,9 +92,15 @@ export default async function ReviewPage({ params }: { params: { token: string }
           <div className="disc-full">
             <div className="dc-lbl">Initial term &amp; minimum obligation</div>
             <p>
-              A {s.initialTermMonths}-month initial service commitment applies regardless of billing choice —
-              &ldquo;monthly&rdquo; is a payment schedule, not a one-month term. {s.minCommitmentText} If you cancel
-              during the initial term, the remaining balance of that term is owed.
+              A {s.initialTermMonths}-month minimum service commitment applies to every plan, regardless of billing
+              choice — &ldquo;monthly&rdquo; is a payment schedule, not a one-month term.{' '}
+              {s.commitmentMonths > s.initialTermMonths
+                ? `Because you're prepaying, this payment covers ${s.commitmentMonths} months of service — more ` +
+                  `than the ${s.initialTermMonths}-month minimum. `
+                : ''}
+              {s.minCommitmentText} If you cancel during the initial term, you remain responsible for the fees for
+              the rest of that term as they come due under your payment schedule — we do not charge an
+              early-termination penalty or an accelerated lump sum beyond that.
             </p>
           </div>
 

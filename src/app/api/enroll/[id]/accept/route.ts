@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       `(Agreement ${AGREEMENT_VERSION}; disclosure ${DISCLOSURE_VERSION}) for the business identified above.`,
     `Billing: ${snapshot.billingLabel}. Charged today: ${usd(snapshot.immediateCharge)}.`,
     `Recurring: ${snapshot.recurringText}`,
-    `Initial term: ${snapshot.initialTermMonths} months. Minimum obligation: ${usd(snapshot.minCommitment)}.`,
+    `Initial term: ${snapshot.commitmentMonths} months. Minimum obligation: ${usd(snapshot.minCommitment)}.`,
     `Renewal: ${snapshot.renewalBehavior}`,
     `Fair resolution: ${FAIR_RESOLUTION_SENTENCE}`,
   ].join('\n');
