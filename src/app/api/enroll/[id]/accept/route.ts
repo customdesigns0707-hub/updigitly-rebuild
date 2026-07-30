@@ -8,7 +8,7 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { getEnrollmentBySecureId, recordDisclosureAcceptance } from '@/lib/repo';
-import { buildPriceSnapshot, DISCLOSURE_VERSION, FAIR_RESOLUTION_SENTENCE } from '@/lib/enrollment';
+import { buildPriceSnapshot, DISCLOSURE_VERSION, REFUND_POLICY_SENTENCE } from '@/lib/enrollment';
 import { AGREEMENT_VERSION } from '@/config/legal';
 import { syncEnrollment } from '@/lib/ghl/sync';
 import { clientIp, userAgent } from '@/lib/request';
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     `Recurring: ${snapshot.recurringText}`,
     `Initial term: ${snapshot.commitmentMonths} months. Minimum obligation: ${usd(snapshot.minCommitment)}.`,
     `Renewal: ${snapshot.renewalBehavior}`,
-    `Fair resolution: ${FAIR_RESOLUTION_SENTENCE}`,
+    `Refund policy: ${REFUND_POLICY_SENTENCE}`,
   ].join('\n');
 
   const result = await recordDisclosureAcceptance({

@@ -53,6 +53,17 @@ export interface Enrollment {
   cancelledAt: string | null;
   paymentFailedAt: string | null;
   paymentFailedCount: number;
+  // Mirror of Stripe's own subscription-lifecycle fields, kept current by
+  // customer.subscription.updated. Distinct from `status` above, which stays
+  // exclusively owned by checkout.session.completed / subscription.deleted.
+  stripeSubscriptionStatus: string | null;
+  subscriptionCancelAtPeriodEnd: boolean;
+  subscriptionCanceledAt: string | null;
+  subscriptionCurrentPeriodStart: string | null;
+  subscriptionCurrentPeriodEnd: string | null;
+  stripePriceId: string | null;
+  stripePriceUnrecognizedId: string | null;
+  subscriptionSyncedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,6 +97,14 @@ function mapEnrollment(r: any): Enrollment {
     cancelledAt: r.cancelled_at ?? null,
     paymentFailedAt: r.payment_failed_at ?? null,
     paymentFailedCount: r.payment_failed_count ?? 0,
+    stripeSubscriptionStatus: r.stripe_subscription_status ?? null,
+    subscriptionCancelAtPeriodEnd: r.subscription_cancel_at_period_end ?? false,
+    subscriptionCanceledAt: r.subscription_canceled_at ?? null,
+    subscriptionCurrentPeriodStart: r.subscription_current_period_start ?? null,
+    subscriptionCurrentPeriodEnd: r.subscription_current_period_end ?? null,
+    stripePriceId: r.stripe_price_id ?? null,
+    stripePriceUnrecognizedId: r.stripe_price_unrecognized_id ?? null,
+    subscriptionSyncedAt: r.subscription_synced_at ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -744,6 +763,88 @@ export async function recordPaymentFailed(input: {
   });
 }
 
+export interface RecordSubscriptionUpdateInput {
+  eventId: string;
+  eventType: string;
+  stripeSubscriptionId: string;
+  status: string;
+  cancelAtPeriodEnd: boolean;
+  canceledAt: Date | null;
+  currentPeriodStart: Date | null;
+  currentPeriodEnd: Date | null;
+  /** Stripe's own cancel_at — mirrored directly (not coalesced) so this stays a
+   *  live reflection of Stripe's actual state, including if a fixed-term cap
+   *  gets cleared out-of-band (exactly the drift reconcile should catch). */
+  cancelAt: Date | null;
+  /** The Stripe price id currently on the subscription's first item. */
+  priceId: string | null;
+  /** Set only when priceId's lookup_key matched a known plan+term (see
+   *  PLAN_TERM_LOOKUP in lib/stripe.ts) — null means "don't touch plan/billing
+   *  key," never a guess. */
+  recognizedPlan: { planKey: EnrollablePlanKey; billingKey: BillingKey } | null;
+  payload?: unknown;
+}
+
+/**
+ * customer.subscription.updated → keep Stripe's own lifecycle fields (status,
+ * cancel_at_period_end, cancellation/period timestamps, active price) current
+ * on the enrollment WITHOUT touching enrollments.status (exclusively owned by
+ * checkout.session.completed → 'paid' and customer.subscription.deleted →
+ * 'cancelled'), stage_events, or any frozen disclosure_acceptances evidence.
+ * Deliberately does not call syncEnrollment — this must never retrigger the
+ * enrollment/onboarding flow or fire a duplicate CRM workflow. Idempotent on
+ * the Stripe event id like the other subscription-lifecycle handlers, but
+ * (unlike recordStripePayment) every distinct event is meant to apply — this
+ * mirrors ongoing state, not a one-time transition.
+ */
+export async function recordSubscriptionUpdated(
+  input: RecordSubscriptionUpdateInput,
+): Promise<SubscriptionEventResult> {
+  const sql = getSql();
+  return sql.begin(async (tx) => {
+    const json = (v: unknown) => v as Parameters<typeof tx.json>[0];
+    const claimed = await tx`
+      insert into stripe_events (id, type, payload)
+      values (${input.eventId}, ${input.eventType}, ${tx.json(json(input.payload ?? {}))})
+      on conflict (id) do nothing
+      returning id`;
+    if (claimed.length === 0) {
+      const [enr] = await tx`
+        select * from enrollments where stripe_subscription_id = ${input.stripeSubscriptionId} limit 1`;
+      if (!enr) return { ok: false, reason: 'enrollment_not_found' } as const;
+      return { ok: true, outcome: 'duplicate_event', enrollment: mapEnrollment(enr) } as const;
+    }
+
+    const [enr] = await tx`
+      select * from enrollments where stripe_subscription_id = ${input.stripeSubscriptionId} for update`;
+    if (!enr) return { ok: false, reason: 'enrollment_not_found' } as const;
+
+    await tx`update stripe_events set enrollment_id = ${enr.id} where id = ${input.eventId}`;
+
+    const recognizedPlanKey = input.recognizedPlan?.planKey ?? null;
+    const recognizedBillingKey = input.recognizedPlan?.billingKey ?? null;
+
+    const [updated] = await tx`
+      update enrollments set
+        stripe_subscription_status = ${input.status},
+        subscription_cancel_at_period_end = ${input.cancelAtPeriodEnd},
+        subscription_canceled_at = ${input.canceledAt},
+        subscription_current_period_start = ${input.currentPeriodStart},
+        subscription_current_period_end = ${input.currentPeriodEnd},
+        subscription_cancel_at = ${input.cancelAt},
+        stripe_price_id = ${input.priceId},
+        plan_key = coalesce(${recognizedPlanKey}, plan_key),
+        billing_key = coalesce(${recognizedBillingKey}, billing_key),
+        stripe_price_unrecognized_id = ${input.recognizedPlan ? null : input.priceId},
+        subscription_synced_at = now(),
+        updated_at = now()
+      where id = ${enr.id}
+      returning *`;
+
+    return { ok: true, outcome: 'applied', enrollment: mapEnrollment(updated) } as const;
+  });
+}
+
 /* ─── Reconciliation report (Chat 4 hardening) ─────────────────────────────
    Read-only. Surfaces drift the request-path best-effort sync can't self-heal:
    payments Stripe confirmed that never matched an enrollment, checkouts that
@@ -770,6 +871,16 @@ export interface ReconciliationReport {
     stripeSubscriptionId: string | null;
     billingKey: string;
     paidAt: string | null;
+  }>;
+  /** A customer.subscription.updated event carried a Stripe price whose
+   *  lookup_key doesn't match any of our seeded plan+term prices — flagged
+   *  here instead of silently guessing at plan_key/billing_key. */
+  unrecognizedPrices: Array<{
+    secureId: string;
+    businessName: string;
+    stripeSubscriptionId: string | null;
+    stripePriceUnrecognizedId: string | null;
+    subscriptionSyncedAt: string | null;
   }>;
 }
 
@@ -826,6 +937,17 @@ export async function getReconciliationReport(): Promise<ReconciliationReport> {
      order by paid_at asc
      limit 50`;
 
+  // A subscription.updated event carried a price we don't recognize — see
+  // recordSubscriptionUpdated. Never auto-resolved; needs a human decision
+  // (rename the price's lookup_key, or this genuinely is a plan change to
+  // reflect manually).
+  const unrecognizedPrices = await sql`
+    select secure_id, business_name, stripe_subscription_id, stripe_price_unrecognized_id, subscription_synced_at
+      from enrollments
+     where stripe_price_unrecognized_id is not null
+     order by subscription_synced_at desc
+     limit 50`;
+
   return {
     unmatchedStripeEvents: unmatchedStripeEvents.map((r: any) => ({
       id: r.id,
@@ -863,6 +985,13 @@ export async function getReconciliationReport(): Promise<ReconciliationReport> {
       stripeSubscriptionId: r.stripe_subscription_id,
       billingKey: r.billing_key,
       paidAt: r.paid_at,
+    })),
+    unrecognizedPrices: unrecognizedPrices.map((r: any) => ({
+      secureId: r.secure_id,
+      businessName: r.business_name,
+      stripeSubscriptionId: r.stripe_subscription_id,
+      stripePriceUnrecognizedId: r.stripe_price_unrecognized_id,
+      subscriptionSyncedAt: r.subscription_synced_at,
     })),
   };
 }

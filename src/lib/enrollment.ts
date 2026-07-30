@@ -153,9 +153,19 @@ export function answerLabel(qId: string, value: string): string {
 // v2 (interim launch, 2026-07-28): fixed-term billing with NO automatic renewal.
 export const DISCLOSURE_VERSION = 'v2-2026-07';
 
-/** LOCKED verbatim (Decision #2) — the doubt-reducer shown near checkout. */
-export const FAIR_RESOLUTION_SENTENCE =
-  'If we determine during onboarding that the selected plan cannot deliver the core engagement as presented, we will contact the client and provide a fair resolution.';
+/**
+ * LOCKED verbatim (Decision #2, superseded 2026-07-30) — the doubt-reducer
+ * shown near checkout. Originally a vague discretionary "fair resolution";
+ * replaced with the objective refund standard from /legal#cancellation
+ * (cure-then-credit/prorated-refund) so this can't diverge from the published
+ * policy again. Changing this constant only affects FUTURE acceptances —
+ * already-frozen disclosure_acceptances rows keep whatever text was actually
+ * shown at accept time (that's the point of freezing it as evidence).
+ */
+export const REFUND_POLICY_SENTENCE =
+  'If we determine during onboarding that the selected plan cannot deliver the core engagement as presented, ' +
+  'we will first have a reasonable opportunity to correct it; if it is not corrected, we will provide an ' +
+  'appropriate credit or a prorated refund for the undelivered portion, consistent with our refund policy.';
 
 export interface PriceSnapshot {
   planKey: PlanKey;
@@ -186,7 +196,7 @@ export interface PriceSnapshot {
   minCommitmentText: string;
   renewalBehavior: string;
   disclosureVersion: string;
-  fairResolution: string;
+  refundPolicy: string;
   capturedAt: string;
 }
 
@@ -250,7 +260,7 @@ export function buildPriceSnapshot(planKey: EnrollablePlanKey, billingKey: Billi
     minCommitmentText: `${usd(minCommitment)} — your minimum total obligation for the ${commitmentMonths}-month initial term.`,
     renewalBehavior,
     disclosureVersion: DISCLOSURE_VERSION,
-    fairResolution: FAIR_RESOLUTION_SENTENCE,
+    refundPolicy: REFUND_POLICY_SENTENCE,
     capturedAt: new Date().toISOString(),
   };
 }

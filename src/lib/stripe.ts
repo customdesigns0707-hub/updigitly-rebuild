@@ -59,6 +59,32 @@ export function lookupKeyFor(plan: EnrollablePlanKey, billing: BillingKey): stri
   return PLAN_TERM_LOOKUP[plan][billing];
 }
 
+/** Reverse of PLAN_TERM_LOOKUP: lookup_key -> plan+billing. Built once at
+ *  module load — same six entries, just the other direction. */
+const PLAN_BY_LOOKUP_KEY: Record<string, { planKey: EnrollablePlanKey; billingKey: BillingKey }> =
+  Object.fromEntries(
+    Object.entries(PLAN_TERM_LOOKUP).flatMap(([planKey, byBilling]) =>
+      Object.entries(byBilling).map(([billingKey, lookupKey]) => [
+        lookupKey,
+        { planKey: planKey as EnrollablePlanKey, billingKey: billingKey as BillingKey },
+      ]),
+    ),
+  );
+
+/**
+ * Resolve a Stripe price's lookup_key back to our internal plan+billing key.
+ * Returns null for any price we don't recognize (ad-hoc/manually-created
+ * prices, a lookup_key typo, a price from a different Stripe account) — the
+ * caller must treat null as "flag it," never guess at a plan (Decision:
+ * customer.subscription.updated sync, 2026-07-30).
+ */
+export function recognizePlanForLookupKey(
+  lookupKey: string | null | undefined,
+): { planKey: EnrollablePlanKey; billingKey: BillingKey } | null {
+  if (!lookupKey) return null;
+  return PLAN_BY_LOOKUP_KEY[lookupKey] ?? null;
+}
+
 /**
  * Resolve the live Stripe price id for a plan+term by its lookup_key. Throws if
  * no active price is seeded — the checkout route turns this into a safe "not

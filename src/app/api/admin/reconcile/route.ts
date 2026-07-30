@@ -40,7 +40,8 @@ export async function GET(req: NextRequest) {
     report.stuckSyncs.length +
     report.stuckContactMessages.length +
     report.stuckStrategyCallInquiries.length +
-    report.paidWithoutCancelAt.length;
+    report.paidWithoutCancelAt.length +
+    report.unrecognizedPrices.length;
 
   return NextResponse.json({ ok: true, clean: totalFindings === 0, totalFindings, ...report });
 }

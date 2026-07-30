@@ -12,13 +12,14 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import type Stripe from 'stripe';
-import { getStripe, stripeConfigured, ensureFixedTermCancel } from '@/lib/stripe';
+import { getStripe, stripeConfigured, ensureFixedTermCancel, recognizePlanForLookupKey } from '@/lib/stripe';
 import { stripe as stripeEnv } from '@/lib/env';
 import {
   recordStripePayment,
   recordSubscriptionCancelled,
   recordPaymentFailed,
   recordSubscriptionCancelAt,
+  recordSubscriptionUpdated,
 } from '@/lib/repo';
 import { syncEnrollment } from '@/lib/ghl/sync';
 
@@ -132,6 +133,48 @@ export async function POST(req: NextRequest) {
         } catch (err) {
           console.error('[stripe webhook] GHL sync deferred (cron will retry):', err);
         }
+      }
+      return NextResponse.json({ received: true, outcome: result.outcome });
+    }
+
+    // customer.subscription.updated — keep Stripe's own lifecycle fields (status,
+    // cancel_at_period_end, cancellation/period timestamps, active price) mirrored
+    // on the enrollment. Deliberately narrow: never touches enrollments.status,
+    // stage_events, or frozen disclosure_acceptances evidence, and never calls
+    // syncEnrollment — this must not retrigger the enrollment/onboarding flow or
+    // fire a duplicate CRM workflow. A recognized price change (matches one of our
+    // seeded lookup_keys) updates plan_key/billing_key; an unrecognized price is
+    // flagged via stripe_price_unrecognized_id instead of guessed at.
+    if (event.type === 'customer.subscription.updated') {
+      const sub = event.data.object as Stripe.Subscription;
+      const item = sub.items.data[0];
+      const price = item?.price ?? null;
+      const recognizedPlan = recognizePlanForLookupKey(price?.lookup_key);
+
+      const result = await recordSubscriptionUpdated({
+        eventId: event.id,
+        eventType: event.type,
+        stripeSubscriptionId: sub.id,
+        status: sub.status,
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+        canceledAt: sub.canceled_at ? new Date(sub.canceled_at * 1000) : null,
+        currentPeriodStart: item?.current_period_start ? new Date(item.current_period_start * 1000) : null,
+        currentPeriodEnd: item?.current_period_end ? new Date(item.current_period_end * 1000) : null,
+        cancelAt: sub.cancel_at ? new Date(sub.cancel_at * 1000) : null,
+        priceId: price?.id ?? null,
+        recognizedPlan,
+        payload: { eventId: event.id, type: event.type, subscription: sub.id },
+      });
+      if (!result.ok) {
+        console.error('[stripe webhook] no enrollment for subscription', sub.id);
+        return NextResponse.json({ received: true, unmatched: true });
+      }
+      if (result.outcome === 'applied' && !recognizedPlan && price?.id) {
+        console.warn(
+          '[stripe webhook] unrecognized price on subscription.updated — flagged, not applied:',
+          sub.id,
+          price.id,
+        );
       }
       return NextResponse.json({ received: true, outcome: result.outcome });
     }

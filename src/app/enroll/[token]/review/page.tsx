@@ -111,7 +111,7 @@ export default async function ReviewPage({ params }: { params: { token: string }
 
           <div className="disc-full fair-note">
             <div className="dc-lbl">If the plan isn&rsquo;t the right fit</div>
-            <p>{s.fairResolution}</p>
+            <p>{s.refundPolicy}</p>
           </div>
 
           <div className="disc-full">
