@@ -21,7 +21,7 @@ export default function Icon() {
           fontWeight: 700,
           fontSize: 15,
           letterSpacing: '-0.01em',
-          color: '#fff',
+          color: '#00E887',
         }}
       >
         Up
