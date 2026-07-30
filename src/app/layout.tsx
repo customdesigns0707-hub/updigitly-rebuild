@@ -36,11 +36,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Fonts loaded via <link> (not next/font) so the build never depends on
           a Google Fonts fetch and works on any network. Design DNA: Space
           Grotesk (display) · Inter (body) · JetBrains Mono (mono/data).
+          Unbounded is added ONLY for the "Up" + "Digitly" logo mark (nav/footer) —
+          not used anywhere else in the type system.
         */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@200;300;400;500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@200;300;400;500&family=Unbounded:wght@700&display=swap"
           rel="stylesheet"
         />
       </head>
