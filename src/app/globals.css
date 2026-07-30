@@ -61,14 +61,14 @@ body.cursor-hover .cursor-ring{
   background:linear-gradient(rgba(10,11,15,.75),rgba(10,11,15,.35));
   border-bottom:1px solid var(--line);
 }
-.logo{display:flex;align-items:center;gap:10px;font-family:'Poppins',var(--font-display),sans-serif;font-weight:800;font-size:19px;letter-spacing:-.01em;color:#F4F5F7}
+.logo{display:flex;align-items:center;gap:10px;font-family:'Poppins',var(--font-display),sans-serif;font-weight:800;font-size:19px;letter-spacing:-.01em;color:#D6EC3C}
 .logo-mark{
-  width:30px;height:30px;flex-shrink:0;border-radius:9px;
+  width:30px;height:30px;flex-shrink:0;border-radius:6px;
   display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,#FF8A3D,#E8600E);
+  background:#5A5347;
   font-family:'Poppins',var(--font-display),sans-serif;
-  font-weight:800;font-size:13px;letter-spacing:-.01em;color:#00E887;
-  box-shadow:0 4px 12px rgba(232,96,14,.35);
+  font-weight:800;font-size:19px;letter-spacing:-.01em;color:#D6EC3C;
+  box-shadow:0 4px 12px rgba(0,0,0,.35);
 }
 .nav-links{display:flex;gap:36px;font-size:14px;color:var(--slate)}
 .nav-links a{position:relative;transition:color .25s}
@@ -542,7 +542,7 @@ td:first-child{color:var(--slate)}
    ========================================================================== */
 .site-footer{border-top:1px solid var(--line);background:var(--surface)}
 .sf-top{max-width:var(--maxw);margin:0 auto;padding:72px 48px 44px;display:grid;grid-template-columns:1.5fr 1fr 1fr 1.2fr;gap:40px}
-.sf-brand .sf-logo{display:flex;align-items:center;gap:10px;font-family:'Poppins',var(--font-display),sans-serif;font-weight:800;font-size:20px;letter-spacing:-.01em;color:#F4F5F7}
+.sf-brand .sf-logo{display:flex;align-items:center;gap:10px;font-family:'Poppins',var(--font-display),sans-serif;font-weight:800;font-size:20px;letter-spacing:-.01em;color:#D6EC3C}
 .sf-brand p{color:var(--slate);font-size:14px;line-height:1.7;margin-top:16px;max-width:320px}
 .sf-col .sf-head{font-family:var(--font-mono),'JetBrains Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--slate);margin-bottom:18px}
 .sf-col a{display:block;color:var(--white);font-size:14.5px;padding:7px 0;transition:color .25s}
