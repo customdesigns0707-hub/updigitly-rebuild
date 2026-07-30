@@ -1,7 +1,7 @@
 import { ImageResponse } from 'next/og';
 
 // Next.js App Router file convention: auto-generates the favicon / browser
-// tab icon. Same orange tile as the nav/footer logo mark.
+// tab icon. Same orange "Up" tile as the nav/footer logo mark.
 export const size = { width: 32, height: 32 };
 export const contentType = 'image/png';
 

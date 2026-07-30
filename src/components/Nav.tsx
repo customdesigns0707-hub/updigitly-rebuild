@@ -27,7 +27,7 @@ export function Nav({ active }: { active?: string }) {
       <nav className="nav">
         <Link href="/" className="logo" data-hover>
           <span className="logo-mark" aria-hidden="true">Up</span>
-          Updigitly<span>.</span>
+          Digitly
         </Link>
         <div className="nav-links">
           {siteConfig.nav.map((item) => (

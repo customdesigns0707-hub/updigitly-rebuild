@@ -14,7 +14,7 @@ export function Footer() {
         <div className="sf-brand">
           <div className="sf-logo">
             <span className="logo-mark" aria-hidden="true">Up</span>
-            Updigitly<span>.</span>
+            Digitly
           </div>
           <p>
             A managed digital growth partner. One connected system — accountable for the growth it produces.
