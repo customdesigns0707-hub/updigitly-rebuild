@@ -8,49 +8,27 @@
  * reopen it.
  *
  * ───────────────────────────────────────────────────────────────────────────
- * ONE GATE (interim timing gate). Do NOT print the Arizona LLC's name in any
- * published/signable document until its Arizona filing is legally EFFECTIVE.
- * When you kick this off:
- *   • If the AZ filing is effective: set ENTITY_FILING_EFFECTIVE = true, put the
- *     EXACT Arizona-registered name in AZ_LLC_LEGAL_NAME, and set
- *     LEGAL_EFFECTIVE_DATE to the publish date.
- *   • If it is NOT yet effective: leave all three as-is. The name renders as a
- *     single, clearly-marked placeholder and the effective date stays blank —
- *     nothing invents an entity name or labels it an LLC before it exists.
+ * CONTRACTING PARTY — LOCKED 2026-07-30. Do not reopen. The contracting party
+ * is Joby Gran, an individual doing business as Updigitly (a sole proprietor /
+ * individual DBA — not an LLC or other entity). There is no AZ-entity timing
+ * gate: this is the real, final party name, usable in published/signable
+ * documents now.
  * The New Mexico parent LLC is an ownership fact only and NEVER appears on any
  * client-facing document — it is intentionally absent from this file.
  * ───────────────────────────────────────────────────────────────────────────
  */
 
-/** Flip to true ONLY once the Arizona operating LLC's filing is legally effective. */
-export const ENTITY_FILING_EFFECTIVE = false;
-
-/** EXACT Arizona-registered legal name of the operating LLC. Leave '' until filed. */
-export const AZ_LLC_LEGAL_NAME = '';
-
 /** Publication/effective date, e.g. 'July 29, 2026'. Leave '' until publish. */
 export const LEGAL_EFFECTIVE_DATE = '';
-
-/** The single, clearly-marked placeholder used everywhere until the name is real. */
-export const ENTITY_NAME_PLACEHOLDER = '[ARIZONA LLC LEGAL NAME — pending Arizona filing]';
-
-/** True when the entity name is still the placeholder (drives the one on-page marker). */
-export const ENTITY_NAME_IS_PLACEHOLDER = !(ENTITY_FILING_EFFECTIVE && AZ_LLC_LEGAL_NAME.trim() !== '');
-
-/** The contracting/operating entity's name as it should appear in text. */
-export const ENTITY_NAME = ENTITY_NAME_IS_PLACEHOLDER ? ENTITY_NAME_PLACEHOLDER : AZ_LLC_LEGAL_NAME.trim();
 
 /** Short brand name used conversationally in the documents. */
 export const ENTITY_SHORT = 'Updigitly';
 
-/**
- * Parties/identity phrase. Once effective it states the fact ("an Arizona limited
- * liability company"); while pending it does NOT assert the entity exists yet —
- * it is careful not to label a not-yet-formed entity an LLC.
- */
-export const ENTITY_DESCRIPTOR = ENTITY_NAME_IS_PLACEHOLDER
-  ? `${ENTITY_NAME} (Arizona limited liability company — formation pending)`
-  : `${ENTITY_NAME}, an Arizona limited liability company`;
+/** The contracting/operating party's name as it should appear in text. */
+export const ENTITY_NAME = `Joby Gran, doing business as ${ENTITY_SHORT}`;
+
+/** Parties/identity phrase — an individual DBA, not an entity. */
+export const ENTITY_DESCRIPTOR = `Joby Gran, an individual doing business as ${ENTITY_SHORT}`;
 
 /** Effective-date display: the real date once set, else an explicit "to be set" note. */
 export const EFFECTIVE_DATE_DISPLAY = LEGAL_EFFECTIVE_DATE.trim() !== ''
@@ -68,7 +46,7 @@ export const BUSINESS_ADDRESS = {
   },
 };
 
-/** Governing law / venue — Arizona, Pima County (the operating entity IS an AZ LLC). */
+/** Governing law / venue — Arizona, Pima County (where the individual operator does business). */
 export const GOVERNING_LAW_STATE = 'Arizona';
 export const VENUE = 'the state and federal courts located in Pima County, Arizona';
 

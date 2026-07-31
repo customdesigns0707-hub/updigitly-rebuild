@@ -6,7 +6,6 @@ import { siteConfig } from '@/config/site';
 import {
   ENTITY_NAME,
   ENTITY_DESCRIPTOR,
-  ENTITY_NAME_IS_PLACEHOLDER,
   ENTITY_SHORT,
   EFFECTIVE_DATE_DISPLAY,
   BUSINESS_ADDRESS,
@@ -31,9 +30,11 @@ export const metadata: Metadata = {
  * required points. The plan, dates, and price specific to a given order (the
  * "Service Order" specifics) are shown on the enrollment review + confirmation
  * pages and recorded as acceptance evidence; this page is the standard terms
- * they attach to. Contracting party is the Arizona operating LLC; Arizona
- * governing law. No acceleration / arbitration / liquidated-damages language —
- * those wait for counsel. Versioned via AGREEMENT_VERSION.
+ * they attach to. Contracting party is Joby Gran, an individual doing business
+ * as Updigitly (a sole proprietor / individual DBA); Arizona governing law. No
+ * acceleration / arbitration / liquidated-damages language — those wait for
+ * counsel. No assignment-to-successor-entity clause — explicitly decided
+ * against by the operator, not an open item. Versioned via AGREEMENT_VERSION.
  */
 
 export default function AgreementPage() {
@@ -56,14 +57,6 @@ export default function AgreementPage() {
         <div className="legal-updated">
           Version {AGREEMENT_VERSION} · Effective date: {EFFECTIVE_DATE_DISPLAY}
         </div>
-
-        {ENTITY_NAME_IS_PLACEHOLDER && (
-          <div className="legal-note">
-            The provider&rsquo;s exact registered name and the effective date are set at publication, once the Arizona
-            limited liability company&rsquo;s formation is effective. They appear below as a single marked placeholder
-            until then; no engagement is signed under this Agreement before that name is final.
-          </div>
-        )}
 
         <section className="legal-section">
           <p>

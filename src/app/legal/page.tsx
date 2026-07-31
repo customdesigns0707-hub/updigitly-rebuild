@@ -7,7 +7,6 @@ import { siteConfig } from '@/config/site';
 import {
   ENTITY_NAME,
   ENTITY_DESCRIPTOR,
-  ENTITY_NAME_IS_PLACEHOLDER,
   ENTITY_SHORT,
   EFFECTIVE_DATE_DISPLAY,
   BUSINESS_ADDRESS,
@@ -31,10 +30,10 @@ export const metadata: Metadata = {
  * with NO automatic renewal, and an objective refund policy. The full combined
  * Service Order + Agreement lives at /legal/agreement.
  *
- * The only unresolved items are the Arizona operating LLC's exact registered
- * name and the effective date, gated on the Arizona filing being legally
- * effective (see src/config/legal.ts). They render as a single clearly-marked
- * placeholder until set — nothing else on this page is provisional.
+ * The contracting/operating party is Joby Gran, an individual doing business as
+ * Updigitly (a sole proprietor / individual DBA — see src/config/legal.ts). The
+ * only value set at publication is the effective date; nothing on this page is
+ * provisional.
  */
 
 const TOC = [
@@ -62,14 +61,6 @@ export default function LegalPage() {
 
       <div className="legal-wrap">
         <div className="legal-updated">Effective date: {EFFECTIVE_DATE_DISPLAY}</div>
-
-        {ENTITY_NAME_IS_PLACEHOLDER && (
-          <div className="legal-note">
-            The operating entity&rsquo;s exact registered name and this page&rsquo;s effective date are set at
-            publication, once the Arizona limited liability company&rsquo;s formation is effective. They appear below
-            as a single marked placeholder until then.
-          </div>
-        )}
 
         <Reveal className="legal-toc">
           <div className="lbl">{'//'} On this page</div>
