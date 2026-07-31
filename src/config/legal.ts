@@ -19,7 +19,7 @@
  */
 
 /** Publication/effective date, e.g. 'July 29, 2026'. Leave '' until publish. */
-export const LEGAL_EFFECTIVE_DATE = '';
+export const LEGAL_EFFECTIVE_DATE = 'July 31, 2026';
 
 /** Short brand name used conversationally in the documents. */
 export const ENTITY_SHORT = 'Updigitly';
