@@ -8,6 +8,12 @@
   ],
   "redirects": [
     {
+      "source": "/",
+      "has": [{ "type": "host", "value": "www.updigitly.com" }],
+      "destination": "https://updigitly.com/",
+      "permanent": true
+    },
+    {
       "source": "/:path*",
       "has": [{ "type": "host", "value": "www.updigitly.com" }],
       "destination": "https://updigitly.com/:path*",
