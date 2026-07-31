@@ -22,8 +22,7 @@ function authorized(req: NextRequest): boolean {
   if (!syncEnv.secret) return isDev;
   const header = req.headers.get('authorization');
   const bearer = header?.startsWith('Bearer ') ? header.slice(7) : null;
-  const q = req.nextUrl.searchParams.get('secret');
-  return bearer === syncEnv.secret || q === syncEnv.secret;
+  return bearer === syncEnv.secret;
 }
 
 interface PriceDef {

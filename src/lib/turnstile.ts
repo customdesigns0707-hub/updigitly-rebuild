@@ -1,13 +1,16 @@
 /**
  * Cloudflare Turnstile server-side verification. Server-only.
  *
- * When no secret is configured (local dev / not yet wired) verification is
- * SKIPPED and returns ok:true so the forms still work — the widget also hides
- * itself client-side, so the two stay consistent. In production, set both
- * TURNSTILE_SECRET_KEY and NEXT_PUBLIC_TURNSTILE_SITE_KEY to enforce it.
+ * When no secret is configured, behavior depends on environment: in local dev
+ * verification is SKIPPED and returns ok:true so the forms still work without
+ * credentials — the widget also hides itself client-side, so the two stay
+ * consistent. In production, a missing secret instead FAILS CLOSED
+ * (ok:false, reason:'not-configured') so bot protection can never silently
+ * disappear because an env var went missing. Set both TURNSTILE_SECRET_KEY
+ * and NEXT_PUBLIC_TURNSTILE_SITE_KEY to enforce it normally.
  */
 import 'server-only';
-import { turnstile } from './env';
+import { turnstile, isDev } from './env';
 
 const VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
@@ -21,7 +24,10 @@ export async function verifyTurnstile(
   token: string | undefined,
   ip: string | null,
 ): Promise<TurnstileResult> {
-  if (!turnstile.isConfigured) return { ok: true, skipped: true };
+  if (!turnstile.isConfigured) {
+    if (isDev) return { ok: true, skipped: true };
+    return { ok: false, reason: 'not-configured' };
+  }
   if (!token) return { ok: false, reason: 'missing-token' };
 
   const body = new URLSearchParams();

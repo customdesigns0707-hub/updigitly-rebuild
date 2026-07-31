@@ -95,6 +95,13 @@ export const sync = {
   secret: opt('SYNC_SECRET'),
 };
 
+/** Vercel's own Cron Jobs secret. When an env var named exactly CRON_SECRET
+ *  exists, Vercel auto-attaches it as `Authorization: Bearer <value>` on
+ *  every cron-triggered invocation — /api/sync accepts this OR SYNC_SECRET,
+ *  since the scheduled trigger and an operator's manual call are two
+ *  different callers that shouldn't have to share one secret. */
+export const cronSecret = opt('CRON_SECRET');
+
 /** Public canonical URL (already used by site config). */
 export const siteUrl = opt('NEXT_PUBLIC_SITE_URL') ?? 'https://updigitly.com';
 

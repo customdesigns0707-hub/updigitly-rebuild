@@ -8,8 +8,10 @@
  * caught up. This is the safety net behind the best-effort sync in the request
  * path (so a GHL outage during a submission self-heals on the next tick).
  *
- * Guard: `Authorization: Bearer <SYNC_SECRET>` (or `?secret=`). When SYNC_SECRET
- * is unset it is allowed only in local dev, and refused in production.
+ * Guard: `Authorization: Bearer <SYNC_SECRET>` (operator calls) OR
+ * `Bearer <CRON_SECRET>` (Vercel's own auto-attached cron token — see
+ * src/lib/env.ts). When neither is set it is allowed only in local dev, and
+ * refused in production.
  *
  * Chat 4 hardening: after draining, also runs the read-only reconciliation
  * report (see /api/admin/reconcile) and logs a warning when it finds
@@ -20,18 +22,17 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { drainSyncQueue, drainContactMessages, drainStrategyCallInquiries } from '@/lib/ghl/sync';
 import { dbConfigured } from '@/lib/db';
-import { sync as syncEnv, isDev } from '@/lib/env';
+import { sync as syncEnv, cronSecret, isDev } from '@/lib/env';
 import { getReconciliationReport } from '@/lib/repo';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function authorized(req: NextRequest): boolean {
-  if (!syncEnv.secret) return isDev; // no secret set → dev-only
+  if (!syncEnv.secret && !cronSecret) return isDev; // neither secret set → dev-only
   const header = req.headers.get('authorization');
   const bearer = header?.startsWith('Bearer ') ? header.slice(7) : null;
-  const q = req.nextUrl.searchParams.get('secret');
-  return bearer === syncEnv.secret || q === syncEnv.secret;
+  return (!!syncEnv.secret && bearer === syncEnv.secret) || (!!cronSecret && bearer === cronSecret);
 }
 
 async function run(req: NextRequest) {
