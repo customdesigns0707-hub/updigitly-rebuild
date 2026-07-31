@@ -5,5 +5,13 @@
       "path": "/api/sync",
       "schedule": "0 0 * * *"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "www.updigitly.com" }],
+      "destination": "https://updigitly.com/:path*",
+      "permanent": true
+    }
   ]
 }
