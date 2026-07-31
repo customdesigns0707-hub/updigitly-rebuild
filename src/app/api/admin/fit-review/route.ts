@@ -10,6 +10,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { sync as syncEnv, isDev } from '@/lib/env';
 import { setFitReviewStatus, type FitReviewStatus } from '@/lib/repo';
+import { clientIp } from '@/lib/request';
+import { checkRateLimit, rateLimitedResponse } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +26,8 @@ function authorized(req: NextRequest): boolean {
 const VALID_STATUSES: FitReviewStatus[] = ['pending', 'cleared', 'flagged', 'resolved'];
 
 export async function POST(req: NextRequest) {
+  const rateLimit = await checkRateLimit(clientIp(req), 'admin-fit-review');
+  if (rateLimit.limited) return rateLimitedResponse(rateLimit);
   if (!authorized(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   let body: unknown;

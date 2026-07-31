@@ -12,6 +12,7 @@ import { insertStrategyCallInquiry } from '@/lib/repo';
 import { syncStrategyCallInquiry } from '@/lib/ghl/sync';
 import { clientIp, userAgent } from '@/lib/request';
 import { dbConfigured } from '@/lib/db';
+import { checkRateLimit, rateLimitedResponse } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,6 +32,9 @@ export async function POST(req: NextRequest) {
   const data = parsed.data;
 
   const ip = clientIp(req);
+  const rateLimit = await checkRateLimit(ip, 'strategy-call');
+  if (rateLimit.limited) return rateLimitedResponse(rateLimit);
+
   const bot = await verifyTurnstile(data.turnstileToken, ip);
   if (!bot.ok) return NextResponse.json({ error: 'turnstile', reason: bot.reason }, { status: 400 });
 

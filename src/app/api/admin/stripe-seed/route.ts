@@ -14,6 +14,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import type Stripe from 'stripe';
 import { getStripe, stripeConfigured, PLAN_TERM_LOOKUP } from '@/lib/stripe';
 import { sync as syncEnv, isDev, stripe as stripeEnv } from '@/lib/env';
+import { clientIp } from '@/lib/request';
+import { checkRateLimit, rateLimitedResponse } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -66,6 +68,8 @@ async function findOrCreateProduct(stripe: Stripe, planKey: string, name: string
 }
 
 async function run(req: NextRequest) {
+  const rateLimit = await checkRateLimit(clientIp(req), 'admin-stripe-seed');
+  if (rateLimit.limited) return rateLimitedResponse(rateLimit);
   if (!authorized(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!stripeConfigured) return NextResponse.json({ error: 'stripe_not_configured' }, { status: 503 });
 

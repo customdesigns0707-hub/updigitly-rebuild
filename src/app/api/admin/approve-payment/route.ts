@@ -18,6 +18,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { sync as syncEnv, isDev, siteUrl } from '@/lib/env';
 import { approvePayment } from '@/lib/repo';
+import { clientIp } from '@/lib/request';
+import { checkRateLimit, rateLimitedResponse } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,6 +32,8 @@ function authorized(req: NextRequest): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  const rateLimit = await checkRateLimit(clientIp(req), 'admin-approve-payment');
+  if (rateLimit.limited) return rateLimitedResponse(rateLimit);
   if (!authorized(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   let body: unknown;

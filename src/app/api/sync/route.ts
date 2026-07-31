@@ -24,6 +24,8 @@ import { drainSyncQueue, drainContactMessages, drainStrategyCallInquiries } from
 import { dbConfigured } from '@/lib/db';
 import { sync as syncEnv, cronSecret, isDev } from '@/lib/env';
 import { getReconciliationReport } from '@/lib/repo';
+import { clientIp } from '@/lib/request';
+import { checkRateLimit, rateLimitedResponse } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,6 +38,8 @@ function authorized(req: NextRequest): boolean {
 }
 
 async function run(req: NextRequest) {
+  const rateLimit = await checkRateLimit(clientIp(req), 'sync');
+  if (rateLimit.limited) return rateLimitedResponse(rateLimit);
   if (!authorized(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!dbConfigured) return NextResponse.json({ error: 'not_configured' }, { status: 503 });
 
