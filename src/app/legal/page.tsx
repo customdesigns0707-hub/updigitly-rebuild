@@ -20,6 +20,7 @@ export const metadata: Metadata = {
   title: 'Legal',
   description:
     'Updigitly legal — privacy, website terms, service & billing terms, cancellation & refunds, and required disclosures.',
+  robots: { index: false, follow: false },
 };
 
 /**
