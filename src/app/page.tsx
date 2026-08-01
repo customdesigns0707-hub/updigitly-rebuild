@@ -125,7 +125,7 @@ export default function HomePage() {
       <section className="block block-wide" style={{ paddingTop: 0 }}>
         <Reveal><div className="sec-kicker">{'//'} Where you are now</div></Reveal>
         <Reveal as="h2">We meet you at your stage <span className="dim">— and route from there.</span></Reveal>
-        <div className="values" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
+        <div className="values routes">
           {ROUTES.map((r) => (
             <Reveal key={r.h} className="val">
               <div className="n" style={{ color: 'var(--amber)' }}>{r.tag}</div>

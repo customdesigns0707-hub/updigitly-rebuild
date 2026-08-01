@@ -20,11 +20,11 @@ export const siteConfig = {
     href: 'tel:5205421876',
   },
 
-  // Managed inbox (footer). PLACEHOLDER address — confirm the real monitored
-  // inbox during the phone/inbox ops-standard deliverable (Decision #3 item a).
+  // Managed inbox (footer). Confirmed 2026-08-01 — routes alongside the
+  // legal.ts LEGAL_EMAILS aliases (privacy@ / legal@ / billing@).
   email: {
-    display: 'hello@updigitly.com',
-    href: 'mailto:hello@updigitly.com',
+    display: 'support@updigitly.com',
+    href: 'mailto:support@updigitly.com',
   },
 
   // Strategy Call booking hand-off (Chat 4, Decision #4: branded link/card —
