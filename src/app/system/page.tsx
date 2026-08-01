@@ -110,7 +110,7 @@ export default function SystemPage() {
       <section className="block block-wide" style={{ paddingTop: 0 }}>
         <Reveal><div className="sec-kicker">{'//'} How engagements operate</div></Reveal>
         <Reveal as="h2">The discipline behind the work.</Reveal>
-        <div className="values" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
+        <div className="values routes">
           {OPERATING.map((o, i) => (
             <Reveal key={o.h} className="val">
               <div className="n">{String(i + 1).padStart(2, '0')}</div>

@@ -328,10 +328,11 @@ td:first-child{color:var(--slate)}
 .values{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:64px}
 @media(max-width:1020px){.values{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:620px){.values{grid-template-columns:1fr}}
-/* 3-up variant (home "where you are now" routing cards) — same responsive
-   collapse as .values, but starts at 3 columns on desktop instead of 4.
-   Replaces a former inline gridTemplateColumns override that ignored these
-   breakpoints entirely and forced 3 squeezed columns on mobile. */
+/* 3-up variant (home "where you are now" routing cards, /system "how
+   engagements operate" cards) — same responsive collapse as .values, but
+   starts at 3 columns on desktop instead of 4. Replaces former inline
+   gridTemplateColumns overrides that ignored these breakpoints entirely and
+   forced 3 squeezed columns / horizontal scroll on mobile. */
 .values.routes{grid-template-columns:repeat(3,1fr)}
 @media(max-width:1020px){.values.routes{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:620px){.values.routes{grid-template-columns:1fr}}
