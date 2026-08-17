@@ -5,7 +5,6 @@ import { Reveal } from '@/components/Reveal';
 import { HeroLayers } from '@/components/hero/HeroLayers';
 import { BeamSlider } from '@/components/BeamSlider';
 import { MagneticButton } from '@/components/MagneticButton';
-import { CapsStrip } from '@/components/CapsStrip';
 
 /**
  * HOME (/) — high-intent ROUTING ENGINE (Sitemap v2, Decision #3). Compact
@@ -66,13 +65,11 @@ export default function HomePage() {
         <div className="scroll-hint">Scroll</div>
       </header>
 
-      {/* ---- capability strip (001–007), live METRIC-STRIP treatment: bordered
-           band + hairline dividers, no panels, no glow. Sits between the hero
-           ticker and the capability marquee (live-site rhythm). Desktop stays
-           the original static 7-in-a-row; tablet/phone auto-rotate a smaller
-           window of consecutive items so nothing wraps into a dead half-row
-           and no text gets cut off (see CapsStrip.tsx). ---- */}
-      <CapsStrip />
+      {/* CapsStrip (numbered 029–032-style scrolling capability ticker) was
+          removed from the homepage 2026-08-17 per operator — read as clutter
+          sitting right above the marquee below. Component itself is untouched
+          in src/components/CapsStrip.tsx, parked for reuse elsewhere if
+          wanted later, just unplugged from this page. */}
 
       {/* ---- capability loop: running banner ---- */}
       <div className="marquee-wrap">
