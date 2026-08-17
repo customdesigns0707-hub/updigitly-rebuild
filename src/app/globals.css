@@ -494,13 +494,12 @@ td:first-child{color:var(--slate)}
   }
   @keyframes deckLive{0%,100%{opacity:1}50%{opacity:.3}}
 
-  /* tablet layout (default within deck): centered BIG map behind the title,
-     Performance + AI above it, Growth + Leads below it, ticker at the bottom */
-  .deck-p-map{ top:24%; left:8vw; width:84vw; height:46vh; z-index:2; }
-  .deck-p-perf{ top:11%; left:2%; width:46vw; height:16vh; z-index:4; }
-  .deck-p-ai{ top:11%; right:2%; width:46vw; height:16vh; z-index:4; }
-  .deck-p-line{ bottom:8%; left:2%; width:46vw; height:15vh; z-index:4; }
-  .deck-p-bars{ bottom:8%; right:2%; width:46vw; height:15vh; z-index:4; }
+  /* tablet layout (default within deck): map fills the hero behind the title,
+     ticker at the bottom. Performance/AI/Growth/Leads panels were pulled out
+     of the hero (2026-08-17) to de-clutter it — their generator modules
+     (./deck/performance.ts, ./deck/aiOptimization.ts, ./deck/growthIndex.ts,
+     ./deck/leads.ts) are untouched and parked for reuse elsewhere on the site. */
+  .deck-p-map{ top:6%; left:3vw; width:94vw; height:88vh; z-index:2; }
 
   /* ---- bottom data ticker ---- */
   .deck-ticker{
@@ -534,13 +533,10 @@ td:first-child{color:var(--slate)}
   }
 }
 
-/* desktop (>=1100px wide): the mockup's exact corner layout */
+/* desktop (>=1100px wide): map fills the hero (Performance/AI/Growth/Leads
+   panels removed from the hero, same as tablet above — see note there). */
 @media (min-width:1100px) and (min-height:600px){
-  .deck-p-map{ top:12%; left:25%; width:50vw; height:68vh; }
-  .deck-p-perf{ top:10.5%; left:2%; width:20vw; height:27vh; }
-  .deck-p-ai{ top:10.5%; right:2%; left:auto; width:21vw; height:29vh; }
-  .deck-p-line{ bottom:8.5%; left:2%; width:24vw; height:24vh; }
-  .deck-p-bars{ bottom:8.5%; right:2%; left:auto; width:24vw; height:24vh; }
+  .deck-p-map{ top:6%; left:2vw; width:96vw; height:88vh; }
 }
 
 /* ==========================================================================

@@ -1,10 +1,6 @@
 'use client';
 import { useEffect, useRef } from 'react';
 import { createUsaMap } from './deck/usaMap';
-import { createPerformance } from './deck/performance';
-import { createAiOptimization } from './deck/aiOptimization';
-import { createGrowthIndex } from './deck/growthIndex';
-import { createLeads } from './deck/leads';
 import type { Panel } from './deck/shared';
 
 /**
@@ -14,10 +10,17 @@ import type { Panel } from './deck/shared';
  *
  * Mounted only when the viewport's SHORTER side is >= 600px (see HeroLayers);
  * desktop corner layout vs tablet centered-map layout is pure CSS, so this
- * one component serves both. One shared rAF loop drives all five canvases,
+ * one component serves both. One shared rAF loop drives the map canvas,
  * fully unmounted (zero CPU) whenever the classic phone hero is shown.
  * Motion is intentionally NOT gated behind prefers-reduced-motion — the live
  * animation is core to the approved design.
+ *
+ * 2026-08-17: the four smaller data panels (Performance / AI Optimization /
+ * Growth Index / Leads) were pulled OUT of the hero to de-clutter it and the
+ * map panel was enlarged to fill the hero. Their generator modules
+ * (`./deck/performance.ts`, `./deck/aiOptimization.ts`, `./deck/growthIndex.ts`,
+ * `./deck/leads.ts`) are untouched and still exported — they're parked for
+ * reuse as standalone panels elsewhere on the site, not deleted.
  */
 
 const FLECKS: { top: string; left: string; amber?: boolean; txt: string }[] = [
@@ -54,25 +57,17 @@ export function DeckLayer() {
   const torchRef = useRef<HTMLDivElement | null>(null);
   const clockRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<HTMLCanvasElement | null>(null);
-  const perfRef = useRef<HTMLCanvasElement | null>(null);
-  const aiRef = useRef<HTMLCanvasElement | null>(null);
-  const lineRef = useRef<HTMLCanvasElement | null>(null);
-  const barsRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const layer = layerRef.current, torch = torchRef.current;
     if (!layer || !torch) return;
 
-    /* ---------- panels: one shared rAF drives all five canvases ---------- */
-    const canvases = [mapRef, perfRef, aiRef, lineRef, barsRef].map((r) => r.current);
+    /* ---------- panel: one shared rAF drives the map canvas ---------- */
+    const canvases = [mapRef].map((r) => r.current);
     if (canvases.some((c) => !c)) return;
-    const [mapC, perfC, aiC, lineC, barsC] = canvases as HTMLCanvasElement[];
+    const [mapC] = canvases as HTMLCanvasElement[];
     const panels: Panel[] = [
       createUsaMap(mapC),
-      createPerformance(perfC),
-      createAiOptimization(aiC),
-      createGrowthIndex(lineC),
-      createLeads(barsC),
     ];
 
     // Refit a canvas whenever CSS resizes it (viewport resize, orientation,
@@ -151,22 +146,6 @@ export function DeckLayer() {
         <div className="deck-panel deck-p-map">
           <div className="deck-panel-head"><span>NATIONAL REACH — UNITED STATES</span><span className="deck-live" /></div>
           <canvas ref={mapRef} />
-        </div>
-        <div className="deck-panel deck-p-perf">
-          <div className="deck-panel-head"><span>UPDIGITLY {'//'} PERFORMANCE</span><span className="deck-live" /></div>
-          <canvas ref={perfRef} />
-        </div>
-        <div className="deck-panel deck-p-ai">
-          <div className="deck-panel-head"><span>AI OPTIMIZATION</span><span className="deck-live" /></div>
-          <canvas ref={aiRef} />
-        </div>
-        <div className="deck-panel deck-p-line">
-          <div className="deck-panel-head"><span>GROWTH INDEX — 12 MO</span><span className="deck-live" /></div>
-          <canvas ref={lineRef} />
-        </div>
-        <div className="deck-panel deck-p-bars">
-          <div className="deck-panel-head"><span>LEADS / WK</span><span className="deck-live" /></div>
-          <canvas ref={barsRef} />
         </div>
 
         <div className="deck-ticker">
